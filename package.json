@@ -18,7 +18,8 @@
     "session-secret": "node --import tsx src/server/main.ts session-secret",
     "backup": "node dist/server/main.js backup",
     "format": "prettier --write src tests scripts *.json .github/workflows/*.yml",
-    "format:check": "prettier --check src tests scripts *.json .github/workflows/*.yml"
+    "format:check": "prettier --check src tests scripts *.json .github/workflows/*.yml",
+    "test:container": "node --import tsx scripts/smoke-container.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

@@ -31,3 +31,15 @@ jobs:
           name: dashboard-previews
           path: artifacts/*.png
           if-no-files-found: ignore
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t corp-staging .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:container

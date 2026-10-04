@@ -1,0 +1,14 @@
+.git
+node_modules
+dist
+.venv
+__pycache__
+corp
+artifacts
+data
+.env
+.env.*
+*.sqlite3
+*.sqlite3-*
+public/*.js
+public/*.map

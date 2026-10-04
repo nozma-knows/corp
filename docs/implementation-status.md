@@ -1,42 +1,20 @@
-# First implementation status
+# Implementation status
 
-## Working now
+The runtime, browser application, shared contracts, and tests are TypeScript. Fastify handles HTTP; Node 24's built-in SQLite provides WAL persistence. Server, accounting, workflows, worker registry, inspection, and presentation have separate modules. Dependencies are locked and audited in CI.
 
-| Area | Implemented |
-| --- | --- |
-| Financial state | Virtual opening capital, balanced journal, immutable posted records |
-| Treasury | Protected reserve, refund coverage, envelope budgets, atomic commitments |
-| Spending | Per-action and daily ceilings; execution-time policy checks |
-| Commands | Persistent idempotency, transactional rollback, audited denials |
-| Operator control | Pause/resume, budget changes, limits, cancellation, refunds |
-| Simulation | Scripted sale/delivery/accounting cycle; recurring local scheduler |
-| Dashboard | Overview, team, businesses, treasury, activity, controls |
-| Verification | Financial/API tests and isolated browser workflow checks |
+Implemented:
 
-## Deliberate implementation choices
+- Virtual opening capital, protected reserve, integer cents, balanced append-only journals.
+- Atomic reservations, refund coverage, envelope budgets, spending limits and execution-time policy checks.
+- Persistent idempotent successes/denials, rollback, pause/resume, cancellation, refunds, and atomic scripted ticks.
+- Worker positions, hierarchy, owned functions, boundaries, disable/enable control, durable execution spans and nested accounting links.
+- Eight dashboard views, truthful zero-inference reporting, responsive controls and workflow inspection.
+- Hosted owner sessions, HTTPS configuration checks, CSRF/origin protection, login throttling, protected API/export, request IDs and security headers.
+- Checksum-verified migrations, startup integrity checks, verified online backups and restore tests.
+- Non-root container, persistent-volume deployment blueprint, readiness/liveness, graceful shutdown, CI and isolated browser/container smoke checks.
 
-The first application uses Python/FastAPI, SQLite WAL, and dependency-free browser modules. This makes the financial core and dashboard runnable with the installed environment and avoids recurring hosted services during validation. Domain, database, API, and presentation are separated.
+This is an authenticated staging **simulation**. Its money, customers, products, delivery and worker decisions are illustrative. No model credentials, marketplace accounts, generated assets, live revenue, outreach, or payments exist. No inference destination is invented. Old pre-inspector cycles are not backfilled with fabricated history.
 
-The architecture brief's PostgreSQL, Temporal, and framework-based frontend remain candidates for later multi-user/live operations. The local scheduler is appropriate for atomic simulated cycles; it is not a substitute for a durable external-action workflow engine.
+Next work: validate a niche with attributable evidence; implement bounded model proposals and measured inference cost; create licensed deliverables; establish the legal seller/country and verified capital; connect permitted sales/payment providers; build durable outbox/webhook/reconciliation workflows; implement reward evaluation, reinvestment and evidence-based expansion. A seller account and provider credentials remain human onboarding steps.
 
-The existing Sites skill is available as guidance, but its required local setup/publishing scripts were not present or readable. No Site was registered and no hosted deployment was created. Source work continued locally.
-
-## Next work
-
-1. Research candidate niches with dated, attributable evidence and select a bounded real demand experiment.
-2. Add model-backed structured proposal workers with model/tool cost admission and provider limits.
-3. Produce actual original/licensed digital deliverables with file and quality validation.
-4. Resolve operating country, legal owner, and whether software development is included in the $1,000.
-5. Verify platform rules and connect a permitted sales adapter and payout account.
-6. Implement external-action state machines, outbox dispatch, provider idempotency and webhook verification, and reconciliation for ambiguous outcomes.
-7. Add deployment authentication, backups, monitoring, and recovery checks before real-money execution.
-8. Implement evidence-based reinvestment, rewards/allocation evaluation, and expansion proposals.
-
-## Important boundaries
-
-- Virtual capital is not evidence of a real deposit.
-- Scripted roles do not use LLMs or conduct real research.
-- Simulated quality stages do not certify actual products.
-- Refunding removes virtual revenue while retaining scenario costs.
-- No actual customer data, outreach, payments, ads, listings, or business accounts exist.
-- A protected buffer and admission checks cannot guarantee protection from arbitrary future external liabilities.
+One instance with SQLite is the supported deployment topology. Move to PostgreSQL and durable workflow processing before horizontal scaling or real financial operations. A virtual reserve cannot guarantee protection from future external liabilities. Hosting availability and provider charges are separate from the virtual ledger until real reconciliation is implemented.

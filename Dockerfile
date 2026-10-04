@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+# Managed environments supply their CA through this ephemeral BuildKit secret.
+RUN --mount=type=secret,id=proxy_ca,required=false \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci --ignore-scripts --no-audit --strict-ssl=true
+COPY tsconfig*.json ./
+COPY src ./src
+COPY scripts/build-client.ts ./scripts/build-client.ts
+COPY public ./public
+RUN npm run build && npm prune --omit=dev --offline --ignore-scripts --no-audit
+
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runtime
+ENV NODE_ENV=production CORP_ENV=staging CORP_DB_PATH=/data/company.sqlite3 PORT=8000
+WORKDIR /app
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/public ./public
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node migrations ./migrations
+RUN mkdir -p /data && chown node:node /data && chmod 700 /data
+USER node
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "dist/server/main.js"]

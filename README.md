@@ -35,7 +35,13 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The browser check uses an isolated authenticated company and captures eight dashboard views, worker controls, financial controls, session behavior, mobile width, and 200% text. Installed `/usr/bin/chromium` or `CORP_CHROMIUM_PATH` is also supported. Test artifacts and databases are ignored by Git. GitHub Actions runs these checks, a production dependency audit.
+The browser check uses an isolated authenticated company and captures eight dashboard views, worker controls, financial controls, session behavior, mobile width, and 200% text. Installed `/usr/bin/chromium` or `CORP_CHROMIUM_PATH` is also supported. Test artifacts and databases are ignored by Git. GitHub Actions runs these checks, a production dependency audit, and a container persistence/backup smoke test.
+
+## Deploy staging
+
+The [deployment runbook](docs/deployment.md) covers configuration, secret generation, Render provisioning, container testing, backups, recovery, and rollout checks. [render.yaml](render.yaml) defines one authenticated Docker service with persistent storage. Provisioning needs a hosting account; applying the blueprint can incur provider charges. Review the current price in that account first.
+
+Hosted mode refuses to start without an HTTPS origin, an operator password hash, a random session secret, and an absolute persistent database path. Password sessions use HttpOnly/Secure/SameSite cookies, expiration and revocation, CSRF/origin checks, persistent login throttling, and generic error responses. APIs and exports require owner access. Secrets belong in the hosting provider, never in Git or chat.
 
 ## Source
 
