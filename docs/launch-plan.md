@@ -51,7 +51,7 @@ An LLM cannot alter policy, release its own reservation, approve its own excepti
 
 ## Product architecture
 
-Use a modular monolith, durable workflows, and separate workers. Recommended stack: TypeScript/Next.js dashboard, Python domain and agent services, PostgreSQL, and Temporal for workflow durability. Run dependencies locally for development; assess hosted costs before committing company capital.
+Use a modular monolith, durable workflows, and separate workers. Use TypeScript throughout the dashboard, domain, and agent services. The current bounded staging implementation uses Fastify and SQLite; move to PostgreSQL and a durable workflow engine such as Temporal before horizontally scaled live operations. Run dependencies locally for development; assess hosted costs before committing company capital.
 
 Modules:
 

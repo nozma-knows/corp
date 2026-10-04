@@ -1,18 +1,33 @@
 name: Company core checks
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: python -m pip install -r requirements.lock
-      - run: python -m unittest discover -s tests -v
-      - run: node --check corp/static/app.js
-      - run: node --check corp/static/views.js
-      - run: node --check corp/static/api.js
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dashboard-previews
+          path: artifacts/*.png
+          if-no-files-found: ignore
