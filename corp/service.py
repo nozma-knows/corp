@@ -6,15 +6,13 @@ import time
 import uuid
 
 from .database import Database
+from .inspector import RunTrace, initialize_workers, record_blocked, snapshot as inspector_snapshot
+from .registry import AGENT_ROLES, WORKER_BY_ID
 from .treasury import DomainError, authorize, balances, envelopes, event, post, scalar
+from .workflows import check_delivery, prepare_delivery
 
 
-ROLES = [
-    {"id": "researcher", "name": "Scout", "role": "Research", "purpose": "Select a product hypothesis for the simulated cycle."},
-    {"id": "creator", "name": "Studio", "role": "Product creation", "purpose": "Prepare the simulated digital deliverable."},
-    {"id": "reviewer", "name": "Review", "role": "Quality", "purpose": "Record the simulated quality-check stage."},
-    {"id": "operator", "name": "Operator", "role": "Business operations", "purpose": "Run the simulated order, delivery, and settlement."},
-]
+ROLES = AGENT_ROLES
 
 
 class CompanyService:
@@ -25,6 +23,7 @@ class CompanyService:
         self.db.migrate()
         now = int(self.clock())
         with self.db.transaction() as connection:
+            initialize_workers(connection)
             if connection.execute("SELECT 1 FROM company").fetchone():
                 return
             connection.execute("INSERT INTO company(id, mode, reserve_minor, action_limit_minor, daily_limit_minor, created_at) VALUES (1, 'simulation', 40000, 2500, 4000, ?)", (now,))
@@ -60,6 +59,10 @@ class CompanyService:
             result["company"]["policy_healthy"] = result["company"]["cash_minor"] >= result["company"]["reserve_minor"] + result["company"]["reserved_minor"] + result["company"]["refund_buffer_minor"]
             return result
 
+    def inspector(self):
+        with self.db.snapshot() as connection:
+            return inspector_snapshot(connection)
+
     def command(self, key: str, kind: str, payload: dict):
         now = int(self.clock())
         fingerprint = hashlib.sha256(json.dumps([kind, payload], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -72,7 +75,7 @@ class CompanyService:
             else:
                 handlers = {"cycle": self._cycle, "pause": self._pause, "automation": self._automation,
                             "reserve": self._reserve, "execute": self._execute, "cancel": self._cancel,
-                            "refund": self._refund, "policy": self._policy, "allocations": self._allocations}
+                            "refund": self._refund, "policy": self._policy, "allocations": self._allocations, "worker": self._worker}
                 if kind not in handlers:
                     raise DomainError("Unsupported command.", 422)
                 connection.execute("SAVEPOINT action")
@@ -82,6 +85,8 @@ class CompanyService:
                     # Record a denied decision without committing any partial work.
                     # A retried denial remains a denial after a policy change.
                     connection.execute("ROLLBACK TO action")
+                    if kind == "cycle":
+                        record_blocked(connection, payload.get("product_id", "cleaning-kit"), exc, now)
                     result = {"_error": {"message": str(exc), "status": exc.status}}
                     event(connection, "blocked", "Treasury", "Action blocked by policy", str(exc), now)
                 connection.execute("RELEASE action")
@@ -94,14 +99,25 @@ class CompanyService:
         product = connection.execute("SELECT * FROM products WHERE id = ?", (payload.get("product_id", "cleaning-kit"),)).fetchone()
         if not product:
             raise DomainError("Unknown product.", 422)
+        trace = RunTrace(connection, product["id"], now)
+        product = trace.stage("select_product", {"product_id": product["id"]}, lambda: dict(product))
         cost = product["delivery_cost_minor"]
-        authorize(connection, cost, "creation_quality", now)
+        trace.stage("authorize_budget", {"cost_minor": cost, "envelope_id": "creation_quality"}, lambda: authorize(connection, cost, "creation_quality", now))
+        specification = trace.stage("prepare_delivery", {"product_id": product["id"]}, lambda: prepare_delivery(product))
+        trace.stage("check_delivery", specification, lambda: check_delivery(specification))
         order_id = str(uuid.uuid4())
         # This local simulator settles immediately and fully reserves sale proceeds
         # for 30 days of possible refunds. It makes no demand prediction.
-        connection.execute("INSERT INTO orders VALUES (?, ?, ?, ?, 'delivered', ?, ?)", (order_id, product["id"], product["price_minor"], cost, now + 30 * 86400, now))
-        post(connection, "sale", f"Simulated sale: {product['title']}", [("cash", product["price_minor"]), ("revenue", -product["price_minor"])], now, order_id)
-        post(connection, "expense", "Simulated production, delivery and channel costs", [("expense", cost), ("cash", -cost)], now, order_id, "creation_quality")
+        def settle():
+            connection.execute("INSERT INTO orders VALUES (?, ?, ?, ?, 'delivered', ?, ?)", (order_id, product["id"], product["price_minor"], cost, now + 30 * 86400, now))
+            def accounting():
+                sale = post(connection, "sale", f"Simulated sale: {product['title']}", [("cash", product["price_minor"]), ("revenue", -product["price_minor"])], now, order_id)
+                expense = post(connection, "expense", "Simulated production, delivery and channel costs", [("expense", cost), ("cash", -cost)], now, order_id, "creation_quality")
+                return {"sale_transaction_id": sale, "expense_transaction_id": expense}
+            trace.stage("post_ledger", {"order_id": order_id, "revenue_minor": product["price_minor"], "cost_minor": cost}, accounting)
+            return {"order_id": order_id, "status": "delivered", "simulation_only": True}
+        trace.stage("settle_order", {"product_id": product["id"]}, settle)
+        trace.finish(order_id)
         stages = [
             ("Scout", "Product hypothesis selected", f"{product['title']}. This is a scripted scenario, not observed demand."),
             ("Studio", "Simulated deliverable prepared", "Production and delivery costs are accounted for in this scenario."),
@@ -110,7 +126,7 @@ class CompanyService:
         ]
         for actor, title, detail in stages:
             event(connection, "cycle", actor, title, detail, now, order_id)
-        return {"message": "Simulated sale delivered and reconciled.", "order_id": order_id}
+        return {"message": "Simulated sale delivered and reconciled.", "order_id": order_id, "run_id": trace.id}
 
     def _pause(self, connection, payload, now):
         paused = bool(payload["paused"])
@@ -140,6 +156,7 @@ class CompanyService:
                 connection.execute("UPDATE company SET next_tick = ? WHERE id = 1", (now + 15,))
             except DomainError as exc:
                 connection.execute("ROLLBACK TO cycle")
+                record_blocked(connection, "cleaning-kit", exc, now)
                 connection.execute("UPDATE company SET auto_enabled = 0 WHERE id = 1")
                 event(connection, "blocked", "Treasury", "Auto-run stopped by financial policy", str(exc), now)
             finally:
@@ -208,3 +225,11 @@ class CompanyService:
         connection.executemany("UPDATE envelopes SET budget_minor = ? WHERE id = ?", [(value, key) for key, value in allocation.items()])
         event(connection, "control", "You", "Operating allocations updated", "Protected reserve retained. Existing commitments remain covered.", now)
         return {"message": "Allocations updated."}
+
+    def _worker(self, connection, payload, now):
+        worker = WORKER_BY_ID.get(payload["id"])
+        if not worker or worker["kind"] != "agent":
+            raise DomainError("Only agent workers can be enabled or disabled. Treasury remains mandatory.", 422)
+        connection.execute("UPDATE workers SET enabled = ? WHERE id = ?", (payload["enabled"], worker["id"]))
+        event(connection, "control", "You", f"{worker['name']} {'enabled' if payload['enabled'] else 'disabled'}", "Dependent work will check this worker's status before execution.", now)
+        return {"message": f"{worker['name']} {'enabled' if payload['enabled'] else 'disabled'}."}

@@ -36,6 +36,10 @@ class Automation(Input):
     enabled: StrictBool
 
 
+class Worker(Input):
+    enabled: StrictBool
+
+
 class Experiment(Input):
     title: str = Field(min_length=3, max_length=120)
     envelope_id: str
@@ -127,6 +131,14 @@ def create_app(database_path: Path | None = None, *, start_worker: bool = True) 
     @app.get("/api/state")
     def state():
         return service.state()
+
+    @app.get("/api/inspector")
+    def inspector():
+        return service.inspector()
+
+    @app.post("/api/workers/{worker_id}", dependencies=[Operator])
+    def worker(worker_id: str, body: Worker, key: str = Key):
+        return service.command(key, "worker", {"id": worker_id, **body.model_dump()})
 
     @app.post("/api/simulation/cycle", dependencies=[Operator])
     def cycle(body: Cycle, key: str = Key):

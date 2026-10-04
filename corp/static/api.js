@@ -7,6 +7,7 @@ async function json(response) {
 }
 
 export const getState = () => fetch('/api/state', { cache: 'no-store' }).then(json);
+export const getInspector = () => fetch('/api/inspector', { cache: 'no-store' }).then(json);
 
 export function command(path, body = {}, method = 'POST', key = crypto.randomUUID()) {
   return fetch(path, {

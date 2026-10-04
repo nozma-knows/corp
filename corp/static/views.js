@@ -1,22 +1,14 @@
 import { money, escape as e, date } from './api.js';
+import { icon } from './icons.js';
+import { companyMap, inferenceView, inspectorDialog } from './inspector.js';
+export { icon } from './icons.js';
 
 export const pages = [
-  ['overview', 'Overview', 'grid'], ['team', 'Agent team', 'team'], ['businesses', 'Businesses', 'store'],
+  ['overview', 'Overview', 'grid'], ['team', 'Agent team', 'team'], ['company', 'Company map', 'link'], ['businesses', 'Businesses', 'store'], ['inference', 'Execution & inference', 'activity'],
   ['treasury', 'Treasury', 'wallet'], ['activity', 'Activity', 'activity'], ['settings', 'Controls', 'sliders'],
 ];
 
-const paths = {
-  grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  team: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5"/>',
-  store: '<path d="M3 10h18l-2-6H5l-2 6ZM5 10v10h14V10M9 20v-6h6v6M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/>',
-  wallet: '<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 8h18M16 12h5v5h-5z"/>',
-  activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
-  sliders: '<path d="M4 7h7m4 0h5M4 17h3m4 0h9"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
-  play: '<path d="m8 5 11 7-11 7V5Z"/>', pause: '<path d="M8 5v14M16 5v14"/>',
-  arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>', check: '<path d="m5 12 4 4L19 6"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>', link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/>',
-};
-export const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.grid}</svg>`;
+
 
 function heading(title, description, s) {
   return `<div class="page-heading"><div><div class="eyebrow">YOUR COMPANY WORKSPACE</div><h1>${title}</h1><p>${description}</p></div><div class="heading-actions"><button class="button secondary" data-action="pause">${icon(s.company.paused ? 'play' : 'pause')}${s.company.paused ? 'Resume company' : 'Pause company'}</button><button class="button primary" data-action="cycle" ${s.company.paused ? 'disabled' : ''}>${icon('play')}Run a cycle</button></div></div>`;
@@ -42,8 +34,9 @@ function timeline(events, limit = 5) {
 
 function agentCards(s, compact = false) {
   return `<div class="${compact ? 'agent-row' : 'team-grid'}">${s.roles.map((role, index) => {
-    const count = s.events.filter(item => item.actor === role.name && item.kind === 'cycle').length;
-    return `<article class="${compact ? 'agent-small' : 'card agent-card'}"><div class="agent-avatar role-${index}">${icon(['activity', 'store', 'check', 'sliders'][index])}</div><div class="agent-info"><strong>${role.name}</strong><span>${role.role}</span>${compact ? '' : `<p>${role.purpose}</p><div class="agent-detail">${count} stage${count === 1 ? '' : 's'} in recent activity<br>Engine: deterministic simulation rules</div>`}</div><span class="agent-status ${s.company.auto_enabled ? 'running' : ''}">${s.company.paused ? 'Paused' : s.company.auto_enabled ? 'Scheduled' : 'Ready'}</span></article>`;
+    const worker = s.inspector.workers.find(worker => worker.id === role.id);
+    const count = worker.execution_count;
+    return `<article class="${compact ? 'agent-small' : 'card agent-card'}"><div class="agent-avatar role-${index}">${icon(['activity', 'store', 'check', 'sliders'][index])}</div><div class="agent-info"><button class="agent-name" data-action="worker-detail" data-id="${role.id}">${role.name}</button><span>${compact ? role.role : role.position}</span>${compact ? '' : `<p>${role.purpose}</p><div class="agent-detail">${count} recorded function${count === 1 ? '' : 's'}<br>Engine: local rules · ${worker.function_ids.length} owned function${worker.function_ids.length === 1 ? '' : 's'}</div>`}</div><span class="agent-status ${s.company.auto_enabled ? 'running' : ''}">${!worker.enabled ? 'Disabled' : s.company.paused ? 'Paused' : s.company.auto_enabled ? 'Scheduled' : 'Ready'}</span></article>`;
   }).join('')}</div>`;
 }
 
@@ -72,6 +65,8 @@ function ledger(s) {
 
 export function render(page, s) {
   const c = s.company;
+  if (page === 'company') return `${heading('See how the company works.', 'Workers, positions, function ownership, and the connections between them.', s)}${companyMap(s)}`;
+  if (page === 'inference') return `${heading('Follow every execution.', 'Inspect function calls, destinations, timing, and financial outcomes.', s)}${inferenceView(s)}`;
   if (page === 'overview') {
     const targetProgress = Math.max(0, Math.min(100, c.profit_minor / s.capabilities.profit_target_minor * 100));
     return `${heading('Your company, at a glance.', 'Follow the work. Control the capital. Understand every outcome.', s)}
@@ -90,6 +85,7 @@ export function render(page, s) {
 export function dialog(kind, s, id) {
   const close = '<button class="dialog-close" data-action="close" aria-label="Close dialog">×</button>';
   const head = (title, text) => `<div class="dialog-header">${close}<span class="eyebrow">COMPANY CONTROL</span><h2 id="modal-title">${title}</h2><p>${text}</p></div>`;
+  if (['worker-detail', 'run-detail'].includes(kind)) return inspectorDialog(kind, s, id, head);
   const footer = label => `<div class="form-error" role="alert"></div><div class="dialog-footer"><button type="button" class="button secondary" data-action="close">Cancel</button><button class="button primary" type="submit">${label}</button></div>`;
   if (kind === 'experiment') return `${head('Reserve an experiment budget', 'Funds are held now. No expense is recorded until you execute the simulated experiment.')}<form data-form="experiment"><label>Experiment name<input name="title" required minlength="3" maxlength="120" placeholder="Test two listing designs"></label><label>Budget envelope<select name="envelope_id">${s.envelopes.map(row => `<option value="${row.id}" ${row.id === 'customer_acquisition' ? 'selected' : ''}>${e(row.label)} · ${money(row.remaining_minor)} left</option>`).join('')}</select></label><label>Maximum cost (USD)<input name="amount" type="number" min="0.01" step="0.01" max="${s.company.action_limit_minor / 100}" value="12" required></label><p class="form-hint">Per-action limit: ${money(s.company.action_limit_minor)}. No real advertising will be purchased.</p>${footer('Reserve funds')}</form>`;
   if (kind === 'policy') return `${head('Set spending limits', 'Current policy is checked again immediately before execution.')}<form data-form="policy"><label>Per-action ceiling (USD)<input name="action" type="number" min="0.01" max="600" step="0.01" value="${s.company.action_limit_minor / 100}" required></label><label>Daily spending ceiling (USD)<input name="daily" type="number" min="0.01" max="600" step="0.01" value="${s.company.daily_limit_minor / 100}" required></label><p class="form-hint">Daily spending uses UTC. Pending reservations also count against admission limits.</p>${footer('Save limits')}</form>`;

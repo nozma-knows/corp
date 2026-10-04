@@ -1,4 +1,4 @@
-import { command, getState, minor, date } from './api.js';
+import { command, getState, getInspector, minor, date } from './api.js';
 import { pages, icon, render, dialog } from './views.js';
 
 let state, busy = false, lastSignature = '', toastTimer;
@@ -21,8 +21,9 @@ function paint() {
 
 async function refresh(force = false) {
   try {
-    const next = await getState();
-    const signature = JSON.stringify([next.company, next.events[0]?.id, next.envelopes]);
+    const [next, inspector] = await Promise.all([getState(), getInspector()]);
+    next.inspector = inspector;
+    const signature = JSON.stringify([next.company, next.events[0]?.id, next.envelopes, inspector.workers, inspector.runs[0]?.id]);
     state = next;
     if (force || signature !== lastSignature) paint();
     lastSignature = signature;
@@ -91,7 +92,12 @@ document.addEventListener('click', async event => {
   if (action === 'close') return modal.close();
   if (action === 'retry') return refresh(true);
   if (!state || busy) return;
-  if (['experiment', 'policy', 'allocations', 'journal', 'trace', 'refund'].includes(action)) return open(action, button.dataset.id);
+  if (['experiment', 'policy', 'allocations', 'journal', 'trace', 'refund', 'worker-detail', 'run-detail'].includes(action)) return open(action, button.dataset.id);
+  if (action === 'trace-from-run') { modal.close(); return open('trace', button.dataset.id); }
+  if (action === 'worker-toggle') {
+    const worker = state.inspector.workers.find(worker => worker.id === button.dataset.id);
+    return act(`/api/workers/${worker.id}`, { enabled: !worker.enabled });
+  }
   if (action === 'pause') return act('/api/pause', { paused: !state.company.paused });
   if (action === 'automation') return act('/api/automation', { enabled: !state.company.auto_enabled });
   if (action === 'cycle' || action === 'product-cycle') return act('/api/simulation/cycle', { product_id: button.dataset.id || 'cleaning-kit' });

@@ -84,9 +84,29 @@ with tempfile.TemporaryDirectory() as directory:
             page.get_by_label("Per-action ceiling (USD)").fill("25")
             page.get_by_role("button", name="Save limits", exact=True).click()
 
-            for target in ("Overview", "Agent team", "Businesses", "Treasury", "Activity", "Controls"):
+            for target in ("Overview", "Agent team", "Company map", "Businesses", "Execution & inference", "Treasury", "Activity", "Controls"):
                 page.get_by_role("link", name=target, exact=True).click()
                 expect(page.locator("#main h1")).to_be_visible()
+
+            page.get_by_role("link", name="Company map", exact=True).click()
+            page.locator(".org-node").filter(has_text="Studio").click()
+            expect(page.get_by_role("heading", name="Studio", exact=True)).to_be_visible()
+            page.get_by_role("button", name="Disable worker", exact=True).click()
+            page.get_by_role("button", name="Run a cycle", exact=True).click()
+            expect(page.locator("#toast")).to_contain_text("Studio is disabled")
+            assert state()["company"]["cash_minor"] == 99550
+            page.locator(".org-node").filter(has_text="Studio").click()
+            page.get_by_role("button", name="Enable worker", exact=True).click()
+            page.screenshot(path=str(ARTIFACTS / "company-map.png"), full_page=True)
+            page.get_by_role("link", name="Execution & inference", exact=True).click()
+            expect(page.get_by_text("External model calls", exact=True)).to_be_visible()
+            page.screenshot(path=str(ARTIFACTS / "inference.png"), full_page=True)
+            page.locator(".run-row").last.click()
+            expect(page.get_by_role("heading", name="Inspect workflow execution")).to_be_visible()
+            expect(page.locator(".span-detail")).to_have_count(6)
+            page.locator(".span-detail summary").first.click()
+            expect(page.locator(".span-body").first).to_contain_text("cleaning-kit")
+            page.get_by_role("button", name="Close dialog", exact=True).click()
 
             page.get_by_role("link", name="Overview", exact=True).click()
             page.set_viewport_size({"width": 390, "height": 844})
@@ -97,7 +117,7 @@ with tempfile.TemporaryDirectory() as directory:
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "200% text layout overflows horizontally"
             assert not errors, errors
             browser.close()
-        print("UI verified: cycle, reservation, pause, cancellation, refund, policy rejection, six views, mobile and 200% text. No browser errors.")
+        print("UI verified: financial controls, eight views, worker disable/enable, trace inspection, mobile and 200% text. No browser errors.")
     finally:
         server.terminate()
         server.wait(timeout=10)
