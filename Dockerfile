@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS build
+FROM node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Managed environments supply their CA through this ephemeral BuildKit secret.
@@ -12,7 +12,7 @@ COPY scripts/build-client.ts ./scripts/build-client.ts
 COPY public ./public
 RUN npm run build && npm prune --omit=dev --offline --ignore-scripts --no-audit
 
-FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runtime
+FROM node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2 AS runtime
 ENV NODE_ENV=production CORP_ENV=staging CORP_DB_PATH=/data/company.sqlite3 PORT=8000
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
