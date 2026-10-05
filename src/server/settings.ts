@@ -17,6 +17,7 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     throw new Error('CORP_ENV must be local, staging, or production');
   const origin =
     env.CORP_PUBLIC_ORIGIN ??
+    (env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : undefined) ??
     (env.RENDER_EXTERNAL_HOSTNAME ? `https://${env.RENDER_EXTERNAL_HOSTNAME}` : undefined);
   let parsed: URL | undefined;
   if (origin) {

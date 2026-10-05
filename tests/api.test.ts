@@ -335,6 +335,51 @@ test('hosted configuration fails closed with missing or malformed settings', () 
     assert.throws(() => loadSettings(env));
 });
 
+test('Railway domain supports HTTPS sessions and provider health checks without opening the API', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'corp-railway-'));
+  const env = {
+    CORP_ENV: 'staging',
+    RAILWAY_PUBLIC_DOMAIN: 'company.up.railway.app',
+    CORP_ALLOWED_HOSTS: 'localhost,healthcheck.railway.app',
+    CORP_DB_PATH: join(directory, 'company.sqlite3'),
+    CORP_OPERATOR_PASSWORD_HASH: passwordHash,
+    CORP_SESSION_SECRET: randomBytes(48).toString('base64url'),
+  };
+  const settings = loadSettings(env);
+  assert.equal(settings.publicOrigin, 'https://company.up.railway.app');
+  assert.equal(
+    loadSettings({ ...env, CORP_PUBLIC_ORIGIN: 'https://custom.example' }).publicOrigin,
+    'https://custom.example',
+  );
+  assert.throws(() =>
+    loadSettings({ ...env, RAILWAY_PUBLIC_DOMAIN: 'company.up.railway.app/path' }),
+  );
+  const { app } = await createApp({ settings, startWorker: false });
+  try {
+    assert.equal(
+      (await app.inject({ url: '/health/ready', headers: { host: 'healthcheck.railway.app' } }))
+        .statusCode,
+      200,
+    );
+    assert.equal(
+      (await app.inject({ url: '/api/state', headers: { host: 'healthcheck.railway.app' } }))
+        .statusCode,
+      401,
+    );
+    assert.equal(
+      (await app.inject({ url: '/', headers: { host: 'company.up.railway.app' } })).statusCode,
+      200,
+    );
+    assert.equal(
+      (await app.inject({ url: '/health/ready', headers: { host: 'foreign.example' } })).statusCode,
+      400,
+    );
+  } finally {
+    await app.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('scheduler exceptions pause the company and fail readiness', async (context) => {
   const directory = mkdtempSync(join(tmpdir(), 'corp-scheduler-'));
   context.mock.timers.enable({ apis: ['setInterval'] });
