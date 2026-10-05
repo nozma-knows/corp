@@ -9,6 +9,17 @@ import { loadSettings } from '../src/server/settings.js';
 import { ModelTasks } from '../src/server/model-tasks.js';
 import type { ModelProvider, ModelReply } from '../src/server/codex-provider.js';
 import { fixture } from './helpers.js';
+import type { AgentAction } from '../src/shared/agent-contracts.js';
+
+const actions: AgentAction[] = [
+  { type: 'delegate', worker: 'researcher', brief: 'Develop a brief.' },
+  { type: 'complete' },
+  { type: 'delegate', worker: 'creator', brief: 'Create the deliverable.' },
+  { type: 'complete' },
+  { type: 'delegate', worker: 'reviewer', brief: 'Review Studio’s saved deliverable.' },
+  { type: 'complete' },
+  { type: 'complete' },
+];
 
 class TestProvider implements ModelProvider {
   connected = true;
@@ -34,6 +45,7 @@ class TestProvider implements ModelProvider {
     if (this.calls.length === this.failAt)
       throw new Error('TEST PROVIDER FAILURE with private transport data');
     return {
+      action: actions[(this.calls.length - 1) % actions.length],
       message: `Test handoff ${this.calls.length}`,
       artifact: `Test deliverable ${this.calls.length}\n<img src=x onerror=alert(1)>`,
       input_tokens: 120,
@@ -55,34 +67,44 @@ test('real task orchestration saves provider responses, hierarchy and usage with
     tasks.tick();
     await tasks.idle();
     assert.equal(tasks.snapshot()[0].status, 'completed');
-    assert.equal(tasks.snapshot()[0].steps.length, 5);
+    assert.equal(tasks.snapshot()[0].steps.length, 7);
     assert.deepEqual(
       tasks.snapshot()[0].steps.map((step) => [step.worker_id, step.recipient_id]),
       [
         ['operator', 'researcher'],
-        ['researcher', 'creator'],
-        ['creator', 'reviewer'],
+        ['researcher', 'operator'],
+        ['operator', 'creator'],
+        ['creator', 'operator'],
+        ['operator', 'reviewer'],
         ['reviewer', 'operator'],
         ['operator', 'owner'],
       ],
     );
     assert.deepEqual(
       provider.calls.map((call) => call.model),
-      ['test-reasoning', 'test-reasoning', 'test-fast', 'test-reasoning', 'test-reasoning'],
+      [
+        'test-reasoning',
+        'test-reasoning',
+        'test-reasoning',
+        'test-fast',
+        'test-reasoning',
+        'test-reasoning',
+        'test-reasoning',
+      ],
     );
-    assert.match(provider.prompts[3], /Test deliverable 3/);
+    assert.match(provider.prompts[4], /Test deliverable 4/);
     assert.equal(
-      tasks.snapshot()[0].steps[4].artifact,
-      'Test deliverable 5\n<img src=x onerror=alert(1)>',
+      tasks.snapshot()[0].steps[6].artifact,
+      'Test deliverable 7\n<img src=x onerror=alert(1)>',
     );
-    assert.equal(f.service.state().messages.length, 6);
+    assert.equal(f.service.state().messages.length, 8);
     assert.ok(
       f.service.state().messages.every((message) => message.model_task_id === result.run_id),
     );
     assert.equal(f.service.state().company.cash_minor, 100000);
     assert.equal(f.service.state().orders.length, 0);
-    assert.equal(f.service.inspector().totals.model_calls, 5);
-    assert.equal(f.service.inspector().totals.input_tokens, 600);
+    assert.equal(f.service.inspector().totals.model_calls, 7);
+    assert.equal(f.service.inspector().totals.input_tokens, 840);
     assert.equal(f.service.inspector().totals.model_cost_micro_usd, null);
     provider.connected = false;
     assert.equal(
@@ -96,7 +118,7 @@ test('real task orchestration saves provider responses, hierarchy and usage with
     );
     tasks.tick();
     await tasks.idle();
-    assert.equal(provider.calls.length, 5);
+    assert.equal(provider.calls.length, 7);
     await assert.rejects(
       tasks.enqueue('real-task-123', { channel: 'general', goal: 'Changed goal' }),
       /already used/,
@@ -155,12 +177,12 @@ test('queued admission respects sign-in, company pause, disabled workers and ser
       /Resume/,
     );
     f.command('pause', { paused: false });
-    f.command('worker', { id: 'creator', enabled: false });
+    f.command('worker', { id: 'operator', enabled: false });
     await assert.rejects(
       tasks.enqueue('disabled-task-123', { channel: 'product', goal: 'Hi' }),
-      /Studio is disabled/,
+      /Operator is disabled/,
     );
-    f.command('worker', { id: 'creator', enabled: true });
+    f.command('worker', { id: 'operator', enabled: true });
     await tasks.enqueue('serial-task-123', { channel: 'general', goal: 'Hi' });
     await assert.rejects(
       tasks.enqueue('parallel-task-123', { channel: 'product', goal: 'Another goal' }),
@@ -223,9 +245,9 @@ test('simultaneous duplicate submissions produce one task and one set of calls',
     assert.equal(first.run_id, second.run_id);
     tasks.tick();
     await tasks.idle();
-    assert.equal(provider.calls.length, 5);
+    assert.equal(provider.calls.length, 7);
     assert.equal(tasks.snapshot().length, 1);
-    assert.equal(f.service.state().messages.length, 6);
+    assert.equal(f.service.state().messages.length, 8);
   } finally {
     await tasks.close();
     f.cleanup();
@@ -311,7 +333,7 @@ test('team API protects mutations and returns persisted provider work through st
     const state = (await server.app.inject('/api/state')).json();
     assert.equal(state.capabilities.llm_agents, true);
     assert.equal(state.model_tasks[0].status, 'completed');
-    assert.equal(state.model_tasks[0].steps[4].output_tokens, 50);
+    assert.equal(state.model_tasks[0].steps[6].output_tokens, 50);
     assert.equal(
       (await server.app.inject({ method: 'POST', url: '/api/models/connect', payload: {} }))
         .statusCode,

@@ -23,7 +23,13 @@ Open http://127.0.0.1:8000 on the machine running the server. Development: `npm 
 
 The office renderer loads only when Company map opens and stays mounted during dashboard updates. Art is generated locally without external assets. WebGL has a Canvas fallback; zoom, fit, motion pause and reduced-motion support keep the office usable on mobile and slower devices. The employee roster and task history remain accessible outside the canvas.
 
-Real team work is separate from virtual-sale simulation. Operator delegates to Scout, Scout briefs Studio, Studio passes its draft to Review, and Operator incorporates the review and returns the final deliverable. Each stage makes a real Codex call, saves the exact response and token usage when reported, and appears in Messages and Company map. Treasury never receives LLM authority. Previous history is preserved; old conversations are not invented.
+Real team work is separate from virtual-sale simulation. The in-house agent runtime starts with Operator and the owner's goal. Operator chooses useful subtasks for Scout, Studio or Review, waits for each result, then decides what to do next. Simple goals can finish in one turn; Studio work requires independent Review before final completion. Each turn makes a real Codex call and saves its response, requested action and reported usage. Actual handoffs appear in Messages and Company map; tool use keeps an employee at work rather than inventing a meeting. Treasury never receives LLM authority. Previous history is preserved; old conversations are not invented.
+
+## In-house agent orchestration
+
+The lightweight runtime owns scheduling, the agent loop, permissions, context, tool execution and persistence. Codex is the model transport. Employees can read virtual company state, save/read task artifacts, and save/read their own cross-task memory. Operator alone delegates and delivers the final result. Tool results feed the next model turn, so the workflow adapts to the goal rather than following a fixed sequence.
+
+Open **Agent activity** on a task to see assignments, events and usage. **Stop team task** cancels queued or active work. Inspect an employee to view and clear its saved memories; clearing is disabled while a task is active. The [runtime design](docs/agent-runtime.md) describes the registered tools, state transitions and recovery rules.
 
 ## Connect ChatGPT and run a real task
 
@@ -35,7 +41,7 @@ The official [Codex SDK](https://github.com/openai/codex/tree/main/sdk/typescrip
 
 Set `CORP_CODEX_MODEL_REASONING` and `CORP_CODEX_MODEL_FAST` to model IDs available to your Codex account if you want different models. Without these settings, Codex chooses its current default model. Operator, Scout and Review use medium/high reasoning; Studio uses low reasoning. Each handoff records the requested model (or explicitly says Codex default), reasoning effort, status, token counts and elapsed time. Unknown usage is shown as unknown; subscription dollar cost is not invented.
 
-Admission is limited to one team task at a time and 20 tasks per rolling day, with five calls per task and a three-minute timeout per call. Pausing stops further stages after the current call; completed work remains saved. In-flight calls interrupted by a restart are marked interrupted and never replayed automatically. Calls happen outside synchronous SQLite transactions. Generated work cannot post sales or financial entries. The monetary action/daily limits are virtual ledger controls, not subscription-usage caps.
+Admission is limited to one team task at a time and 20 tasks per rolling day. A task stops at 12 model calls, a 60,000 reported-token threshold, ten minutes total, or three minutes per call. Token usage is known only after a response, so the last response can exceed the threshold; its action will not execute in that case. Unknown usage remains unknown and the call/time limits still apply. Pausing preserves the current response and stops subsequent tools or calls. Owner cancellation stops immediately; a call may already have consumed subscription usage. In-flight calls interrupted by a restart are marked interrupted and never replayed automatically. Calls happen outside synchronous SQLite transactions. Generated work cannot post sales or financial entries. The monetary action/daily limits are virtual ledger controls, not subscription-usage caps.
 
 Codex authentication is stored in the private `codex` directory beside the SQLite database, on the Railway volume. This owner-only, single-account integration must not be exposed as a public shared model service. Do not copy credentials into Git or environment-variable/chat payloads. The SQLite backup command backs up the database, not the Codex login; sign in again after moving to a new server.
 
@@ -52,7 +58,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The browser check uses an isolated authenticated company and captures the four workspace views, persisted owner notes, incoming-message draft preservation, task handoffs, decisions, worker and financial controls, session behavior, mobile width, and 200% text. Office checks cover walking, furniture collisions, character inspection, meetings, live task status using a fixture provider, retained canvas, zoom, motion pause, reduced motion and the Canvas fallback. Installed `/usr/bin/chromium` or `CORP_CHROMIUM_PATH` is also supported. Test artifacts and databases are ignored by Git. GitHub Actions runs these checks, a production dependency audit, and a container persistence/backup smoke test.
+The browser check uses an isolated authenticated company and captures the four workspace views, persisted owner notes, incoming-message draft preservation, adaptive agent delegation, memory save/clear, in-flight cancellation, decisions, worker and financial controls, session behavior, mobile width, and 200% text. Office checks cover walking, furniture collisions, character inspection, meetings, live task status using a fixture provider, retained canvas, zoom, motion pause, reduced motion and the Canvas fallback. Installed `/usr/bin/chromium` or `CORP_CHROMIUM_PATH` is also supported. Test artifacts and databases are ignored by Git. GitHub Actions runs these checks, a production dependency audit, and a container persistence/backup smoke test.
 
 ## Deploy staging
 

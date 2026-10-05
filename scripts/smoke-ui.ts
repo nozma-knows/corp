@@ -9,7 +9,8 @@ import { createApp } from '../src/server/api.js';
 import { hashPassword } from '../src/server/auth.js';
 import { loadSettings } from '../src/server/settings.js';
 import type { State } from '../src/shared/contracts.js';
-import type { ModelProvider } from '../src/server/codex-provider.js';
+import type { AgentAction } from '../src/shared/agent-contracts.js';
+import type { ModelProvider, ModelReply } from '../src/server/codex-provider.js';
 const directory = mkdtempSync(join(tmpdir(), 'corp-browser-'));
 const password = 'isolated-browser-owner-password';
 const settings = loadSettings({
@@ -23,6 +24,16 @@ let loginStarted = false;
 let modelCalls = 0;
 let modelWait: Promise<void> | undefined;
 let modelRelease: () => void = () => {};
+let customReplies: ModelReply[] | undefined;
+const fixtureActions: AgentAction[] = [
+  { type: 'delegate', worker: 'researcher', brief: 'Develop the launch brief.' },
+  { type: 'complete' },
+  { type: 'delegate', worker: 'creator', brief: 'Create the launch email.' },
+  { type: 'complete' },
+  { type: 'delegate', worker: 'reviewer', brief: 'Review the saved launch email.' },
+  { type: 'complete' },
+  { type: 'complete' },
+];
 const modelProvider: ModelProvider = {
   async status() {
     return {
@@ -40,7 +51,13 @@ const modelProvider: ModelProvider = {
   async generate() {
     modelCalls++;
     if (modelWait) await modelWait;
+    if (customReplies) {
+      const result = customReplies.shift();
+      assert.ok(result, 'Fixture reply required for each agent turn');
+      return result;
+    }
     return {
+      action: fixtureActions[(modelCalls - 1) % fixtureActions.length],
       message: `Fixture employee handoff ${modelCalls}`,
       artifact: `Fixture deliverable ${modelCalls}\n<img src=x onerror=alert(1)>`,
       input_tokens: 100,
@@ -397,25 +414,103 @@ try {
   await waitFor(
     page,
     async () =>
-      (await page.locator('.message-feed').innerText()).includes('Fixture employee handoff 5'),
+      (await page.locator('.message-feed').innerText()).includes('Fixture employee handoff 7'),
     'saved provider handoffs',
   );
-  assert.equal(modelCalls, 5);
+  assert.equal(modelCalls, 7);
   assert.equal((await state()).company.cash_minor, cashBefore);
   assert.equal(
     await page.locator('.message-task-label').filter({ hasText: 'AI reply' }).count(),
-    5,
+    7,
   );
   await nav('Company map');
-  assert.match(await page.locator('.real-team-task').innerText(), /Fixture deliverable 5/);
+  assert.match(await page.locator('.real-team-task').innerText(), /Fixture deliverable 7/);
   assert.match(await page.locator('.real-team-task').innerText(), /Codex default/);
   assert.equal(await page.locator('.model-artifact img').count(), 0);
   assert.match(await page.locator('.model-artifact').last().innerText(), /<img src=x/);
+  assert.match(await page.locator('.agent-activity summary').first().innerText(), /7\/12 turns/);
   await page.screenshot({
     path: 'artifacts/company-map-model-task.png',
     fullPage: true,
     style: '#toast {visibility:hidden}',
   });
+  customReplies = [
+    {
+      action: { type: 'memory.write', key: 'tone', value: 'Plain language across future tasks.' },
+      message: 'Remembering your preference.',
+      artifact: '',
+      input_tokens: 50,
+      output_tokens: 20,
+    },
+    {
+      action: { type: 'complete' },
+      message: 'Preference saved.',
+      artifact: 'Future drafts should use plain language.',
+      input_tokens: 50,
+      output_tokens: 20,
+    },
+  ];
+  await nav('Messages');
+  await page.locator('#message-body').fill('Remember that our brand uses plain language.');
+  await page.getByRole('button', { name: 'Ask team', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await state()).agent_memory?.some((memory) => memory.key === 'tone') ?? false,
+    'memory saved through an agent tool',
+  );
+  await waitFor(
+    page,
+    async () => (await state()).model_tasks?.[0]?.status === 'completed',
+    'memory task completed',
+  );
+  await nav('Company map');
+  await page.getByRole('button', { name: 'Inspect Operator', exact: true }).click();
+  await page.locator('.employee-memory summary').click();
+  assert.match(
+    await page.locator('.employee-memory').innerText(),
+    /Plain language across future tasks/,
+  );
+  await page.getByRole('button', { name: 'Clear memory tone', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await state()).agent_memory?.length === 0,
+    'owner clears persistent memory',
+  );
+  await page.locator('#modal').waitFor({ state: 'hidden' });
+
+  customReplies = [
+    {
+      action: {
+        type: 'artifact.save',
+        name: 'late-result',
+        content: 'Must never execute after cancellation',
+      },
+      message: 'Late reply',
+      artifact: '',
+      input_tokens: 50,
+      output_tokens: 20,
+    },
+  ];
+  modelWait = new Promise((resolve) => {
+    modelRelease = resolve;
+  });
+  await nav('Messages');
+  await page.locator('#message-body').fill('Start a task that I will cancel.');
+  await page.getByRole('button', { name: 'Ask team', exact: true }).click();
+  await nav('Company map');
+  await page.getByRole('button', { name: 'Stop team task', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await state()).model_tasks?.[0]?.error?.includes('Cancelled by owner') ?? false,
+    'owner cancels active agent work',
+  );
+  modelWait = undefined;
+  modelRelease();
+  await page.waitForTimeout(100);
+  assert.equal((await state()).model_tasks?.[0]?.steps[0].status, 'interrupted');
+  assert.equal((await state()).model_tasks?.[0]?.runtime?.artifacts.length, 0);
+  assert.equal((await state()).company.cash_minor, cashBefore);
+  customReplies = undefined;
   // Verify every view on a phone and with larger text, not only the landing view.
   for (const view of ['Balance', 'Messages', 'Decisions', 'Company map']) {
     await nav(view);
@@ -514,7 +609,7 @@ try {
   assert.equal((await page.request.get(url + '/api/state')).status(), 401);
   assert.deepEqual(errors, []);
   console.log(
-    'Browser verified: Phaser office, walking, collision, meetings, sprite inspection, retained scene, zoom, reduced motion, subscription sign-in UI, five-call model task using fixture provider, safe saved deliverables, four views, balance and decisions, persisted safe messages, incoming update drafts, employee hierarchy, task replay, financial/worker controls, mobile and 200% text, sign-in/out.',
+    'Browser verified: Phaser office, walking, collision, meetings, sprite inspection, retained scene, zoom, reduced motion, subscription sign-in UI, adaptive delegated agent task, persistent memory save/clear, in-flight cancellation, safe saved deliverables, four views, balance and decisions, persisted safe messages, incoming update drafts, employee hierarchy, task replay, financial/worker controls, mobile and 200% text, sign-in/out. Model transport uses fixtures.',
   );
 } finally {
   modelWait = undefined;

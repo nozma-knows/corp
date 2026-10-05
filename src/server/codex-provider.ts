@@ -4,14 +4,12 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
-
-const response = z.strictObject({
-  message: z.string().trim().min(1).max(2000),
-  artifact: z.string().trim().min(1).max(12000),
-});
+import { agentResponse } from './agent-protocol.js';
+import type { AgentAction } from '../shared/agent-contracts.js';
 export interface ModelReply {
   message: string;
   artifact: string;
+  action: AgentAction;
   input_tokens: number | null;
   output_tokens: number | null;
 }
@@ -145,8 +143,11 @@ export class SubscriptionCodex implements ModelProvider {
         webSearchMode: 'disabled',
         modelReasoningEffort: effort,
       });
-      const turn = await thread.run(prompt, { signal, outputSchema: z.toJSONSchema(response) });
-      const parsed = response.parse(JSON.parse(turn.finalResponse));
+      const turn = await thread.run(prompt, {
+        signal,
+        outputSchema: z.toJSONSchema(agentResponse),
+      });
+      const parsed = agentResponse.parse(JSON.parse(turn.finalResponse));
       return {
         ...parsed,
         input_tokens: turn.usage?.input_tokens ?? null,

@@ -1,3 +1,4 @@
+import type { AgentRun, AgentMemory } from './agent-contracts.js';
 /** HTTP contracts shared by the service and dashboard. Money is integer USD cents. */
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type WorkerId = 'researcher' | 'creator' | 'reviewer' | 'operator' | 'treasury';
@@ -29,6 +30,9 @@ export interface ModelStep {
   output_tokens: number | null;
   duration_ms: number | null;
   created_at: number;
+  job_id?: string | null;
+  action?: string | null;
+  observation?: string | null;
 }
 export interface ModelTask {
   id: string;
@@ -39,6 +43,7 @@ export interface ModelTask {
   error: string | null;
   created_at: number;
   steps: ModelStep[];
+  runtime?: AgentRun;
 }
 export interface ModelConnection {
   connected: boolean;
@@ -211,6 +216,7 @@ export interface Inspector {
 export interface State {
   model_tasks?: ModelTask[];
   model_connection?: ModelConnection;
+  agent_memory?: AgentMemory[];
   company: Balance & { order_count: number; refund_count: number; policy_healthy: boolean };
   envelopes: Envelope[];
   roles: Worker[];

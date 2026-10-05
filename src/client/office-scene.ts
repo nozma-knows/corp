@@ -259,6 +259,13 @@ class CompanyOffice extends Phaser.Scene {
       this.announce('This handoff involves a disabled employee.');
       return;
     }
+    if (nextCue.sender === nextCue.recipient) {
+      this.root.dataset.phase = 'working';
+      this.announce(
+        `${nextCue.mode === 'live' ? 'Live task' : 'Recorded work'} · ${this.displayName(nextCue.sender)}${nextCue.mode === 'live' ? ' is working.' : ''}`,
+      );
+      return;
+    }
     this.gather(pair);
     this.announce(
       `${nextCue.mode === 'live' ? 'Live task' : 'Recorded handoff'} · ${this.displayName(nextCue.sender)} → ${this.displayName(nextCue.recipient)}`,

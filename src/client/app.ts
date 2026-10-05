@@ -122,6 +122,7 @@ async function refresh(force = false) {
       next.messages.at(-1)?.id,
       next.model_tasks,
       next.model_connection,
+      next.agent_memory,
     ]);
     state = nextState;
     if (force || signature !== lastSignature) paint();
@@ -265,6 +266,9 @@ document.addEventListener('click', async (event) => {
     return paint();
   }
   if (action === 'connect-chatgpt') return act('/api/models/connect');
+  if (action === 'cancel-team-task') return act(`/api/team/tasks/${button.dataset.id}/cancel`);
+  if (action === 'clear-agent-memory')
+    return act(`/api/agents/${button.dataset.worker}/memory/${button.dataset.id}`, {}, 'DELETE');
   if (action === 'team-task') {
     ui.channel = 'product';
     location.hash = 'messages';

@@ -121,15 +121,28 @@ function modelTaskCard(s: DashboardState, step: number) {
   const task = s.model_tasks?.[0];
   if (!task) return '';
   const selected = task.steps[Math.min(step, task.steps.length - 1)];
-  return `<section class="card real-team-task"><span class="eyebrow">REAL TEAM TASK</span><h2>${e(task.goal)}</h2>${tag(task.status, task.status === 'completed' ? 'green' : '')}<p>${task.active_worker ? `${e(name(task.active_worker, s))} is working…` : task.status === 'queued' ? 'Waiting for the team.' : task.error ? e(task.error) : 'The team’s deliverable is saved below.'}</p><ol class="handoff-steps">${task.steps.map((stage, index) => `<li><button class="handoff-step ${index === step ? 'current' : ''}" data-action="handoff-step" data-id="${index}">${avatar(stage.worker_id, s)}<span><strong>${e(name(stage.worker_id, s))} → ${e(name(stage.recipient_id, s))}</strong><small>${e(stage.model ?? 'Codex default')} · ${e(stage.effort)} reasoning · ${e(stage.status)}</small></span></button></li>`).join('')}</ol>${selected ? `<p>${e(selected.message ?? 'Waiting for a model response…')}</p><small>${selected.input_tokens ?? 'Unknown'} input tokens · ${selected.output_tokens ?? 'Unknown'} output tokens</small>` : ''}${task.steps
+  const final = task.status === 'completed' ? task.steps.at(-1)?.id : undefined;
+  const runtime = task.runtime;
+  return `<section class="card real-team-task"><span class="eyebrow">REAL TEAM TASK</span><h2>${e(task.goal)}</h2>${tag(task.status, task.status === 'completed' ? 'green' : '')}<p>${task.active_worker ? `${e(name(task.active_worker, s))} is working…` : task.status === 'queued' ? 'Waiting for the team.' : task.error ? e(task.error) : 'The team’s deliverable is saved below.'}</p><ol class="handoff-steps">${task.steps.map((stage, index) => `<li><button class="handoff-step ${index === step ? 'current' : ''}" data-action="handoff-step" data-id="${index}">${avatar(stage.worker_id, s)}<span><strong>${e(name(stage.worker_id, s))}${stage.worker_id === stage.recipient_id ? '' : ` → ${e(name(stage.recipient_id, s))}`}</strong><small>${e(stage.model ?? 'Codex default')} · ${e(stage.effort)} reasoning · ${e(stage.status)}</small></span></button></li>`).join('')}</ol>${selected ? `<p>${e(selected.message ?? 'Waiting for a model response…')}</p><small>${selected.input_tokens ?? 'Unknown'} input tokens · ${selected.output_tokens ?? 'Unknown'} output tokens</small>` : ''}${task.steps
     .filter((stage) => stage.artifact)
     .map(
       (stage) =>
-        `<details ${stage.sequence === 4 ? 'open' : ''}><summary>${e(name(stage.worker_id, s))} · ${stage.sequence === 4 ? 'Final deliverable' : 'Saved work'}</summary><pre class="model-artifact">${e(stage.artifact!)}</pre></details>`,
+        `<details ${stage.id === final ? 'open' : ''}><summary>${e(name(stage.worker_id, s))} · ${stage.id === final ? 'Final deliverable' : 'Saved work'}</summary><pre class="model-artifact">${e(stage.artifact!)}</pre></details>`,
     )
-    .join(
-      '',
-    )}<p class="model-plan-note">Uses Codex with ChatGPT sign-in and your plan’s usage limits. The virtual balance does not represent subscription usage or real sales.</p></section>`;
+    .join('')}${
+    runtime
+      ? `<details class="agent-activity"><summary>Agent activity · ${runtime.calls}/${runtime.max_calls} turns</summary><p>${runtime.known_tokens.toLocaleString()} reported tokens${runtime.usage_complete ? '' : ' · some usage is unknown'} · ${runtime.max_tokens.toLocaleString()} token stopping threshold</p><ol class="agent-job-list">${runtime.jobs.map((job) => `<li><strong>${e(name(job.worker_id, s))}</strong> · ${e(job.status)}<p>${e(job.brief)}</p></li>`).join('')}</ol><ol class="agent-event-list">${runtime.events.map((event) => `<li>${e(event.summary)}</li>`).join('')}</ol>${runtime.artifacts
+          .filter(
+            (artifact) =>
+              !artifact.name.startsWith('job-') && artifact.name !== 'final-deliverable',
+          )
+          .map(
+            (artifact) =>
+              `<details><summary>${e(artifact.name)} · ${e(name(artifact.worker_id, s))}</summary><pre class="model-artifact">${e(artifact.content)}</pre></details>`,
+          )
+          .join('')}</details>`
+      : ''
+  }${['queued', 'running'].includes(task.status) ? `<button class="button secondary" data-action="cancel-team-task" data-id="${e(task.id)}">Stop team task</button>` : ''}<p class="model-plan-note">Uses Codex with ChatGPT sign-in and your plan’s usage limits. The virtual balance does not represent subscription usage or real sales.</p></section>`;
 }
 function modelConnection(s: DashboardState) {
   const connection = s.model_connection;
@@ -142,7 +155,7 @@ function officeActivity(s: DashboardState, ui: WorkspaceUI) {
     ? s.messages.find((m) => m.run_id === run.id && m.function_id === span.function_id)
     : undefined;
   if (s.model_tasks?.length) return modelTaskCard(s, ui.step);
-  return `<span class="eyebrow">TEAM COMMUNICATION</span><h2>${run ? 'Recorded teamwork' : 'How work moves'}</h2>${run ? `<p class="office-task-title">${e(run.product_title)}</p><span class="replay-label">${ui.replaying ? 'Replaying recorded handoffs' : `${date(run.created_at)} · ${run.status}`}</span><ol class="handoff-steps">${run.spans.map((stage, index) => `<li><button class="handoff-step ${index === ui.step ? 'current' : ''}" data-action="handoff-step" data-id="${index}" aria-pressed="${index === ui.step}">${avatar(stage.worker_id, s)}<span><strong>${e(stage.worker_name)}</strong><small>${e(stage.function_title)}</small></span>${stage.status === 'blocked' ? icon('pause') : icon('check')}</button></li>`).join('')}</ol><div class="handoff-bubble"><span>${span ? `${e(span.worker_name)}${handoff?.recipient_id ? ` → ${e(name(handoff.recipient_id, s))}` : ''}` : 'Team update'}</span><p>${handoff ? e(handoff.body) : run.status === 'blocked' ? 'This task was blocked. No money was committed.' : 'This step completed in the recorded team task.'}</p></div><button class="button secondary replay-button" data-action="replay" ${ui.replaying ? 'disabled' : ''}>${icon('play')}Replay teamwork</button>` : `<ol class="workflow-guide"><li><strong>You</strong> give Operator a goal.</li><li><strong>Operator → Scout</strong> turns it into a brief.</li><li><strong>Scout → Studio → Review</strong> researches, creates and checks the work.</li><li><strong>Operator → You</strong> returns the reviewed deliverable.</li></ol><p>Preview a meeting to explore the office, or give the team a goal in Messages.</p>`}<a class="text-button" href="#messages">Open team messages ${icon('arrow')}</a>`;
+  return `<span class="eyebrow">TEAM COMMUNICATION</span><h2>${run ? 'Recorded teamwork' : 'How work moves'}</h2>${run ? `<p class="office-task-title">${e(run.product_title)}</p><span class="replay-label">${ui.replaying ? 'Replaying recorded handoffs' : `${date(run.created_at)} · ${run.status}`}</span><ol class="handoff-steps">${run.spans.map((stage, index) => `<li><button class="handoff-step ${index === ui.step ? 'current' : ''}" data-action="handoff-step" data-id="${index}" aria-pressed="${index === ui.step}">${avatar(stage.worker_id, s)}<span><strong>${e(stage.worker_name)}</strong><small>${e(stage.function_title)}</small></span>${stage.status === 'blocked' ? icon('pause') : icon('check')}</button></li>`).join('')}</ol><div class="handoff-bubble"><span>${span ? `${e(span.worker_name)}${handoff?.recipient_id ? ` → ${e(name(handoff.recipient_id, s))}` : ''}` : 'Team update'}</span><p>${handoff ? e(handoff.body) : run.status === 'blocked' ? 'This task was blocked. No money was committed.' : 'This step completed in the recorded team task.'}</p></div><button class="button secondary replay-button" data-action="replay" ${ui.replaying ? 'disabled' : ''}>${icon('play')}Replay teamwork</button>` : `<ol class="workflow-guide"><li><strong>You</strong> give Operator a goal.</li><li><strong>Operator → Scout</strong> turns it into a brief.</li><li><strong>Scout, Studio and Review</strong> complete assigned subtasks back to Operator.</li><li><strong>Operator → You</strong> returns the reviewed deliverable.</li></ol><p>Preview a meeting to explore the office, or give the team a goal in Messages.</p>`}<a class="text-button" href="#messages">Open team messages ${icon('arrow')}</a>`;
 }
 function office(s: DashboardState, ui: WorkspaceUI) {
   const cue = officeCue(s, ui.step);
@@ -171,6 +184,8 @@ export function dialog(kind: string, s: DashboardState, id?: string) {
   if (kind !== 'worker-detail') return financialDialog(kind, s, id);
   const worker = s.inspector.workers.find((w) => w.id === id);
   if (!worker) return '';
+  const memories = s.agent_memory?.filter((memory) => memory.worker_id === worker.id) ?? [];
+  const activeTask = s.model_tasks?.some((task) => ['queued', 'running'].includes(task.status));
   const manager =
     worker.manager_id === 'owner' ? 'You, the company owner' : name(worker.manager_id, s);
   return `<div class="dialog-header"><button class="dialog-close" data-action="close" aria-label="Close dialog">×</button><span class="eyebrow">${e(worker.department)} TEAM</span><h2 id="modal-title">${e(worker.name)}</h2><p>${e(worker.position)}</p></div><div class="employee-detail"><div class="employee-reporting"><span>Reports to <strong>${e(manager)}</strong></span>${tag(status(worker.id, s), worker.enabled ? 'green' : '')}</div><h3>Responsibilities</h3><ul>${s.inspector.functions
@@ -178,5 +193,5 @@ export function dialog(kind: string, s: DashboardState, id?: string) {
     .map((f) => `<li>${e(f.title)}</li>`)
     .join(
       '',
-    )}</ul><h3>Model choices by task</h3>${modelPlans[worker.id].map((plan) => `<div class="employee-model"><strong>${e(plan.task)}</strong>${tag(plan.model)}<p>${e(plan.reason)}</p></div>`).join('')}<p class="model-plan-note">${s.model_connection?.connected ? 'Real team tasks call Codex using the configured model route and reasoning effort. Virtual sales remain simulated.' : 'Connect ChatGPT in Company map to enable real team tasks.'}</p>${worker.kind === 'agent' ? `<div class="dialog-footer"><button class="button secondary" data-action="worker-toggle" data-id="${worker.id}">${worker.enabled ? 'Disable worker' : 'Enable worker'}</button></div>` : '<p>Treasury stays enabled to protect the company’s balance.</p>'}</div>`;
+    )}</ul><h3>Model choices by task</h3>${modelPlans[worker.id].map((plan) => `<div class="employee-model"><strong>${e(plan.task)}</strong>${tag(plan.model)}<p>${e(plan.reason)}</p></div>`).join('')}<p class="model-plan-note">${s.model_connection?.connected ? 'Real team tasks call Codex using the configured model route and reasoning effort. Virtual sales remain simulated.' : 'Connect ChatGPT in Company map to enable real team tasks.'}</p>${worker.kind === 'agent' ? `<details class="employee-memory"><summary>Employee memory · ${memories.length} saved</summary><p>Notes this employee can recall across tasks. Clear a note to remove it from future task context.</p>${memories.length ? memories.map((memory) => `<div class="employee-memory-entry"><strong>${e(memory.key)}</strong><pre class="model-artifact">${e(memory.value)}</pre><button class="text-button" data-action="clear-agent-memory" data-worker="${worker.id}" data-id="${e(memory.key)}" ${activeTask ? 'disabled' : ''}>Clear memory ${e(memory.key)}</button></div>`).join('') : '<p>No saved memories yet.</p>'}</details><div class="dialog-footer"><button class="button secondary" data-action="worker-toggle" data-id="${worker.id}">${worker.enabled ? 'Disable worker' : 'Enable worker'}</button></div>` : '<p>Treasury stays enabled to protect the company’s balance.</p>'}</div>`;
 }

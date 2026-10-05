@@ -13,8 +13,13 @@ export function officeCue(state: DashboardState, step: number): OfficeCue | null
   if (task) {
     const selected =
       task.status === 'running'
-        ? (task.steps.filter((s) => s.status === 'completed').at(-1) ??
-          task.steps.find((s) => s.status === 'running'))
+        ? (task.steps
+            .filter(
+              (s) =>
+                s.status === 'completed' &&
+                (!s.action || ['delegate', 'complete'].includes(JSON.parse(s.action).type)),
+            )
+            .at(-1) ?? task.steps.find((s) => s.status === 'running'))
         : task.steps[Math.min(step, task.steps.length - 1)];
     if (!selected) return null;
     return {

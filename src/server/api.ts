@@ -191,6 +191,9 @@ export async function createApp(
       capabilities: { ...state.capabilities, llm_agents: connection.connected },
       model_tasks: modelTasks.snapshot(),
       model_connection: { ...connection, models },
+      agent_memory: db.all(
+        'SELECT worker_id,key,value,updated_at FROM agent_memory ORDER BY worker_id,key',
+      ),
     };
   });
   app.post('/api/models/connect', async (req) => {
@@ -206,6 +209,35 @@ export async function createApp(
     modelTasks.tick();
     return reply.code(202).send(result);
   });
+  app.post<{ Params: { id: string } }>('/api/team/tasks/:id/cancel', async (req) => {
+    authorized(req);
+    if (!z.strictObject({}).safeParse(req.body ?? {}).success)
+      throw new DomainError('Unexpected cancellation fields.', 422);
+    return modelTasks.cancel(req.params.id);
+  });
+  app.get('/api/agents/memory', async () =>
+    db.all('SELECT worker_id,key,value,updated_at FROM agent_memory ORDER BY worker_id,key'),
+  );
+  app.delete<{ Params: { worker: string; key: string } }>(
+    '/api/agents/:worker/memory/:key',
+    async (req) => {
+      authorized(req);
+      if (
+        !z.enum(['operator', 'researcher', 'creator', 'reviewer']).safeParse(req.params.worker)
+          .success ||
+        !/^[A-Za-z0-9_-]{1,64}$/.test(req.params.key)
+      )
+        throw new DomainError('Invalid employee or memory key.', 422);
+      if (db.get("SELECT id FROM model_tasks WHERE status IN ('queued','running')"))
+        throw new DomainError('Stop the active task before clearing agent memory.', 409);
+      db.run(
+        'DELETE FROM agent_memory WHERE worker_id=? AND key=?',
+        req.params.worker,
+        req.params.key,
+      );
+      return { message: 'Employee memory entry cleared.' };
+    },
+  );
   app.get('/api/inspector', async () => service.inspector());
   function mutate(
     path: string,
