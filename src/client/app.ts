@@ -3,6 +3,7 @@ import { element, message } from './dom.js';
 import { command, getState, getInspector, minor, date } from './api.js';
 import { pages, channels, icon, render, dialog, type WorkspaceUI } from './workspace.js';
 import type { MessageChannel } from '../shared/contracts.js';
+import type { OfficeView } from './office-scene.js';
 
 let state: DashboardState | undefined,
   busy = false,
@@ -13,6 +14,38 @@ const modal = element<HTMLDialogElement>('#modal');
 const ui: WorkspaceUI = { channel: 'product', draft: '', step: 0, replaying: false };
 const drafts = new Map<MessageChannel, string>();
 let replayTimer: ReturnType<typeof setInterval> | undefined;
+let officeView: OfficeView | undefined;
+let officeLoading: Promise<typeof import('./office-scene.js')> | undefined;
+
+function syncOffice() {
+  const host = main.querySelector<HTMLElement>('#office-world');
+  if (!host || !state) {
+    officeView?.destroy();
+    officeView = undefined;
+    return;
+  }
+  if (officeView) {
+    officeView.sync(state, ui.step);
+    return;
+  }
+  officeLoading ??= import('./office-scene.js');
+  officeLoading
+    .then((module) => {
+      const current = main.querySelector<HTMLElement>('#office-world');
+      if (!current || !state || officeView) return;
+      officeView = module.createOffice(current, state, ui.step, (id) => {
+        if (id === 'owner') current.focus({ preventScroll: true });
+        else open('worker-detail', id);
+      });
+    })
+    .catch(() => {
+      officeLoading = undefined;
+      const current = main.querySelector<HTMLElement>('#office-world');
+      if (current)
+        current.innerHTML =
+          '<p class="office-loading">The animated office could not load. Employee details and saved handoffs are available below.</p>';
+    });
+}
 const currentPage = () => {
   const page = location.hash.slice(1);
   if (pages.some(([id]) => id === page)) return page;
@@ -49,7 +82,14 @@ function paint() {
   const scroll = feed?.scrollTop ?? 0;
   const atBottom = !feed || feed.scrollHeight - feed.clientHeight - scroll < 40;
   ui.draft = drafts.get(ui.channel) ?? '';
+  // Keep the running scene and avatar positions across polling and handoff selection.
+  const officeHost = currentPage() === 'company' ? main.querySelector('#office-world') : null;
+  const officeFocused = !!officeHost && document.activeElement === officeHost;
+  officeHost?.remove();
   main.innerHTML = render(currentPage(), state, ui);
+  if (officeHost) main.querySelector('#office-world')?.replaceWith(officeHost);
+  syncOffice();
+  if (officeFocused) (officeHost as HTMLElement).focus({ preventScroll: true });
   if (settingsOpen) main.querySelector('.company-settings')?.setAttribute('open', '');
   const nextFeed = main.querySelector('.message-feed');
   if (nextFeed) nextFeed.scrollTop = atBottom ? nextFeed.scrollHeight : scroll;
@@ -165,17 +205,18 @@ function stopReplay() {
 }
 function replay() {
   stopReplay();
-  if (!state?.inspector.runs[0]) return;
+  const stages = state?.model_tasks?.[0]?.steps.length || state?.inspector.runs[0]?.spans.length;
+  if (!stages) return;
   ui.step = 0;
   ui.replaying = !matchMedia('(prefers-reduced-motion: reduce)').matches;
   paint();
   if (!ui.replaying) return;
   replayTimer = setInterval(() => {
     if (currentPage() !== 'company') return stopReplay();
-    if (ui.step < state!.inspector.runs[0].spans.length - 1) ui.step++;
+    if (ui.step < stages - 1) ui.step++;
     else stopReplay();
     paint();
-  }, 1800);
+  }, 9000);
 }
 document.addEventListener('input', (event) => {
   if (event.target instanceof HTMLTextAreaElement && event.target.id === 'message-body')
@@ -201,6 +242,22 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (!state || busy) return;
+  if (action?.startsWith('office-')) {
+    const directions = {
+      'office-up': { x: 0, y: -1 },
+      'office-down': { x: 0, y: 1 },
+      'office-left': { x: -1, y: 0 },
+      'office-right': { x: 1, y: 0 },
+    };
+    if (action === 'office-motion') officeView?.motion();
+    else if (action === 'office-preview') officeView?.preview();
+    else if (action === 'office-fit') officeView?.home();
+    else if (action === 'office-zoom-in') officeView?.zoom(0.25);
+    else if (action === 'office-zoom-out') officeView?.zoom(-0.25);
+    else if (action === 'office-focus') main.querySelector<HTMLElement>('#office-world')?.focus();
+    else if (action in directions) officeView?.move(directions[action as keyof typeof directions]);
+    return;
+  }
   if (action === 'channel') {
     const channel = channels.find((c) => c.id === button.dataset.id);
     if (!channel) return;
