@@ -6,7 +6,7 @@ export default defineRailway((ctx) => {
   const data = volume('company-state', { region: 'us-west2', sizeMB: 1024 });
   const company = service('corp-company-staging', {
     source: github('nozma-knows/corp', { branch: 'main', checkSuites: true }),
-    build: { builder: 'DOCKERFILE', dockerfilePath: 'Dockerfile' },
+    build: { builder: 'DOCKERFILE', dockerfilePath: 'Dockerfile.railway' },
     replicas: 1,
     deploy: {
       region: 'us-west2',
