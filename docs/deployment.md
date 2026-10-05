@@ -2,16 +2,30 @@
 
 Deploy one container and one persistent disk for this simulation. Real money, marketplace operations, model calls and customer outreach remain disabled. Hosting expenses are real and are not reconciled into the virtual ledger.
 
-## Render
+## Railway
 
-1. Connect the GitHub repository `nozma-knows/corp` to your Render account. Apply `render.yaml` from `main` using Blueprints. Confirm the current service/disk charge in Render; this configuration requires paid persistent storage.
-2. Generate the owner password hash locally with `npm run password-hash`. The command requests the password twice without echoing it; use a password manager and at least 12 characters. Copy only the resulting hash to Render's secret `CORP_OPERATOR_PASSWORD_HASH`. Do not paste passwords or secrets into chat, PRs, logs, or Git.
-3. The blueprint generates `CORP_SESSION_SECRET`. Render provides `RENDER_EXTERNAL_HOSTNAME`, which the application uses as its canonical HTTPS origin. For a custom domain, set `CORP_PUBLIC_ORIGIN` to that exact HTTPS origin before using it. Only explicitly configured hostnames are trusted.
-4. Keep `CORP_DB_PATH=/data/company.sqlite3` on the mounted disk, one instance, and automatic deployment off. Deploy the reviewed, tested commit. Persistent disks may cause a short rollout interruption; schedule it accordingly.
-5. Wait for `/health/ready` to return 200. Open the HTTPS URL: it must show sign-in. Check that unauthenticated `/api/state`, `/api/inspector`, and `/api/ledger/export.csv` return 401.
-6. Sign in. Verify virtual opening cash, run one cycle, inspect six spans and nested accounting, disable/enable Studio, and refund the order. Restart the service and confirm the company history persists. Verify sign-out revokes the session.
+Use your existing Railway account with a **dedicated new project** named `corp-company` and an environment for staging. The TypeScript definition in [`.railway/railway.ts`](../.railway/railway.ts) manages that environment: one Docker service from GitHub `main`, one 1 GiB volume in `us-west2`, readiness checks, restart limits, no sleeping, and graceful draining. Do not apply this whole-environment definition to a project containing other services.
 
-No Render account/token is configured in the current development environment. The blueprint is prepared; provisioning requires your account connection. Provider prices and capacity should be confirmed in the account before applying it. The configuration does not imply a deployed URL exists.
+Railway's current Infrastructure as Code uses TypeScript; legacy `railway.json`/`railway.toml` configuration cannot be enabled for new services. The npm `railway` SDK is a development dependency. The separate **Railway CLI must be version 5.42.1 or newer**. See the [official IaC guide](https://docs.railway.com/infrastructure-as-code) and [CLI commands](https://docs.railway.com/cli/config).
+
+1. Merge the reviewed Railway changes into `main` after GitHub checks pass. Install dependencies locally with `npm ci --ignore-scripts`. Connect your GitHub repository to Railway and create the dedicated project/environment. Check its current hosting and volume price; this is a continuously running service with persistent storage, not a free static website.
+2. Generate credentials on your own terminal with `npm run password-hash` and `npm run session-secret`. The first asks for a password twice without echoing it; keep that password in your password manager. Add the resulting hash and random secret as **sealed shared variables** named `CORP_OPERATOR_PASSWORD_HASH` and `CORP_SESSION_SECRET` in the target Railway environment. Preserve the literal `$` separators in the hash. Never put credentials in Git or chat. IaC references these existing shared variables without storing their values.
+3. Authenticate the Railway CLI in your own terminal and link to this dedicated project and environment. From the repository root:
+
+   ```sh
+   railway login
+   railway link
+   railway config plan
+   railway config apply
+   ```
+
+   Review the plan: exactly the company service and its volume, no unrelated deletions, no additional replicas. Applying changes provisions resources and can incur charges. No hosting credentials are currently connected to this development environment; account provisioning and a real deployment have not yet been verified here.
+4. In service Settings → Networking, generate a public domain targeting port **8000**. Generated domains are not created by the IaC definition. Railway supplies `RAILWAY_PUBLIC_DOMAIN`, which the server uses as its canonical HTTPS origin; creating a domain may require another deployment to inject it. An earlier startup without a public origin deliberately fails closed. For a custom domain, set `CORP_PUBLIC_ORIGIN` to the exact HTTPS origin as a sealed/shared configuration reference in the definition before switching domains.
+5. Keep the volume at `/data`, database at `/data/company/company.sqlite3`, and **one instance**. `RAILWAY_RUN_UID=0` permits the container bootstrap to initialize Railway's root-owned volume. It changes only the mount's traversal permissions and the dedicated `company` directory, rejects symlink storage and paths outside that directory, then drops to UID/GID 1000 before starting the app. Database files, backups, sessions and normal requests run without root privileges. No recursive ownership change occurs. Railway's `healthcheck.railway.app` hostname is explicitly allowed.
+6. Wait for `/health/ready` to return 200 over HTTPS. The dashboard must show sign-in. Confirm unauthenticated `/api/state`, `/api/inspector` and `/api/ledger/export.csv` return 401. Sign in, verify $1,000 virtual opening cash, run a cycle, inspect the execution spans, disable/enable Studio, and refund the order. Restart the service and confirm history persists; verify sign-out revokes the session.
+7. Before subsequent deployments, pause auto-run and create a verified backup. GitHub source deployment waits for check suites. Configure the account's deployment settings to deploy only reviewed commits, and verify the commit SHA and persistence after each rollout. A volume-backed service has brief deployment downtime; do not assume overlapping replicas or zero-downtime rollouts.
+
+The provider health check runs during deployment. Add ongoing external availability monitoring and alerts for unattended use. Enable Railway volume backup schedules in the account and keep restricted off-provider backups as well; neither is established just by committing IaC. Hosting and model bills are real expenses outside the virtual ledger.
 
 ## Container on an existing server
 
@@ -44,9 +58,19 @@ Container acceptance check against the image, with disposable state:
 npm run test:container
 ```
 
-This verifies missing-config rejection, non-root/read-only execution, authentication, committed state and sessions after restart, idempotent replay, online backup, and restoration. The temporary test credentials and volume are removed afterward.
+This verifies both ordinary named volumes and root-owned Railway-style volumes: missing-config rejection, non-root application/read-only image, provider health checks, authentication, committed state and sessions after restart, idempotent replay, online backup, and restoration. The temporary test credentials and volume are removed afterward.
 
 ## Backups and recovery
+
+For Railway, use the service shell with the container bootstrap so backup commands also drop privileges:
+
+```sh
+node dist/server/container.js backup \
+  --database /data/company/company.sqlite3 \
+  --output /data/company/backups/company-YYYYMMDD-HHMMSS.sqlite3
+```
+
+Export that verified file through an authorized secure transfer from the service volume; `railway run` runs locally and does **not** mount the remote volume. Do not treat a backup remaining only on the Railway volume as an off-host copy. Restore files inside `/data/company` owned by UID 1000.
 
 Create a backup before each deployment and at least daily while testing. Keep an encrypted off-host copy with restricted access; a backup on the same disk does not protect against disk/provider loss. Owner sessions exist in the database: treat backups as sensitive and rotate the session secret after restoring to revoke old sessions.
 

@@ -11,7 +11,7 @@ Implemented:
 - Eight dashboard views, truthful zero-inference reporting, responsive controls and workflow inspection.
 - Hosted owner sessions, HTTPS configuration checks, CSRF/origin protection, login throttling, protected API/export, request IDs and security headers.
 - Checksum-verified migrations, startup integrity checks, verified online backups and restore tests.
-- Non-root container, persistent-volume deployment blueprint, readiness/liveness, graceful shutdown, CI and isolated browser/container smoke checks.
+- Non-root application container, Railway TypeScript infrastructure and root-owned volume initialization, readiness/liveness, graceful shutdown, CI and isolated browser/container smoke checks.
 
 This is an authenticated staging **simulation**. Its money, customers, products, delivery and worker decisions are illustrative. No model credentials, marketplace accounts, generated assets, live revenue, outreach, or payments exist. No inference destination is invented. Old pre-inspector cycles are not backfilled with fabricated history.
 
