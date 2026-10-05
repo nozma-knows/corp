@@ -5,7 +5,7 @@ services:
     name: corp-company-staging
     runtime: docker
     repo: https://github.com/nozma-knows/corp
-    branch: codex/company-inspector-staging
+    branch: main
     plan: starter
     numInstances: 1
     autoDeployTrigger: off

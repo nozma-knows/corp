@@ -4,7 +4,7 @@ Deploy one container and one persistent disk for this simulation. Real money, ma
 
 ## Render
 
-1. Connect the GitHub repository `nozma-knows/corp` to your Render account. Apply `render.yaml` from `codex/company-inspector-staging` using Blueprints. Confirm the current service/disk charge in Render; this configuration requires paid persistent storage.
+1. Connect the GitHub repository `nozma-knows/corp` to your Render account. Apply `render.yaml` from `main` using Blueprints. Confirm the current service/disk charge in Render; this configuration requires paid persistent storage.
 2. Generate the owner password hash locally with `npm run password-hash`. The command requests the password twice without echoing it; use a password manager and at least 12 characters. Copy only the resulting hash to Render's secret `CORP_OPERATOR_PASSWORD_HASH`. Do not paste passwords or secrets into chat, PRs, logs, or Git.
 3. The blueprint generates `CORP_SESSION_SECRET`. Render provides `RENDER_EXTERNAL_HOSTNAME`, which the application uses as its canonical HTTPS origin. For a custom domain, set `CORP_PUBLIC_ORIGIN` to that exact HTTPS origin before using it. Only explicitly configured hostnames are trusted.
 4. Keep `CORP_DB_PATH=/data/company.sqlite3` on the mounted disk, one instance, and automatic deployment off. Deploy the reviewed, tested commit. Persistent disks may cause a short rollout interruption; schedule it accordingly.
