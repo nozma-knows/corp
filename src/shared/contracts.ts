@@ -1,6 +1,17 @@
 /** HTTP contracts shared by the service and dashboard. Money is integer USD cents. */
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type WorkerId = 'researcher' | 'creator' | 'reviewer' | 'operator' | 'treasury';
+export type MessageChannel = 'general' | 'product' | 'finance';
+export interface TeamMessage {
+  id: number;
+  channel: MessageChannel;
+  sender_id: WorkerId | 'owner';
+  recipient_id: WorkerId | 'owner' | null;
+  body: string;
+  run_id: string | null;
+  function_id: string | null;
+  created_at: number;
+}
 export interface Worker {
   id: WorkerId;
   name: string;
@@ -171,6 +182,7 @@ export interface State {
   orders: Order[];
   actions: Action[];
   events: CompanyEvent[];
+  messages: TeamMessage[];
   ledger: Transaction[];
   server_time: number;
   capabilities: {

@@ -189,6 +189,7 @@ export async function createApp(
     });
   }
   mutate('/api/simulation/cycle', 'cycle');
+  mutate('/api/messages', 'message');
   mutate('/api/pause', 'pause');
   mutate('/api/automation', 'automation');
   mutate('/api/experiments', 'reserve');

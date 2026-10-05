@@ -5,6 +5,7 @@ import { AGENT_ROLES, WORKER_BY_ID } from './registry.js';
 import { authorize, balances, envelopes, event, post, scalar } from './treasury.js';
 import { DomainError } from './errors.js';
 import { prepareDelivery, checkDelivery } from './workflows.js';
+import { postMessage, messagesSnapshot } from './messages.js';
 import { commandSchemas, type CommandKind, type CommandPayload } from './commands.js';
 import type {
   State,
@@ -116,6 +117,7 @@ export class CompanyService {
         ),
         actions: db.all('SELECT * FROM actions ORDER BY created_at DESC,rowid DESC LIMIT 100'),
         events: db.all('SELECT * FROM events ORDER BY id DESC LIMIT 100'),
+        messages: messagesSnapshot(db),
         ledger: db
           .all<Transaction>(
             'SELECT * FROM transactions ORDER BY created_at DESC,rowid DESC LIMIT 100',
@@ -216,6 +218,11 @@ export class CompanyService {
     now: number,
   ): CommandResult {
     switch (kind) {
+      case 'message': {
+        const message = payload as CommandPayload<'message'>;
+        postMessage(this.db, message.channel, 'owner', message.body, now);
+        return { message: 'Message posted to the team.' };
+      }
       case 'cycle':
         return this.cycle(payload as CommandPayload<'cycle'>, now);
       case 'pause':
@@ -402,6 +409,14 @@ export class CompanyService {
       now,
     );
     event(this.db, 'reservation', 'You', 'Experiment funds reserved', p.title, now, id);
+    postMessage(
+      this.db,
+      'finance',
+      'treasury',
+      `The expense proposal “${p.title}” is ready for your decision. $${(p.amount_minor / 100).toFixed(2)} is held; no expense has been recorded.`,
+      now,
+      'owner',
+    );
     return {
       message: 'Funds reserved. Execute or cancel the experiment when ready.',
       action_id: id,
@@ -429,6 +444,14 @@ export class CompanyService {
       a.envelope_id,
     );
     this.db.run("UPDATE actions SET status='completed',completed_at=? WHERE id=?", now, a.id);
+    postMessage(
+      this.db,
+      'finance',
+      'treasury',
+      `Your approved expense “${a.title}” is recorded: $${(a.amount_minor / 100).toFixed(2)}. The balance has been updated.`,
+      now,
+      'owner',
+    );
     event(
       this.db,
       'experiment',
@@ -445,6 +468,14 @@ export class CompanyService {
   private cancel(p: CommandPayload<'cancel'>, now: number) {
     const a = this.action(p.id);
     this.db.run("UPDATE actions SET status='cancelled',completed_at=? WHERE id=?", now, a.id);
+    postMessage(
+      this.db,
+      'finance',
+      'treasury',
+      `You declined “${a.title}”. The $${(a.amount_minor / 100).toFixed(2)} hold was released back to available funds.`,
+      now,
+      'owner',
+    );
     event(this.db, 'control', 'You', 'Reservation cancelled', a.title, now, a.id);
     return { message: 'Reservation released.' };
   }

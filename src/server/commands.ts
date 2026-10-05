@@ -2,6 +2,10 @@ import { z } from 'zod';
 const identifier = z.string().trim().min(1).max(128);
 const amount = z.number().int().min(1).max(60000);
 export const commandSchemas = {
+  message: z.strictObject({
+    channel: z.enum(['general', 'product', 'finance']),
+    body: z.string().trim().min(1).max(2000),
+  }),
   cycle: z.strictObject({ product_id: identifier.default('cleaning-kit') }),
   pause: z.strictObject({ paused: z.boolean() }),
   automation: z.strictObject({ enabled: z.boolean() }),

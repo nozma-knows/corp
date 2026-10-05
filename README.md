@@ -14,13 +14,14 @@ npm start
 
 Open http://127.0.0.1:8000 on the machine running the server. Development: `npm run dev`. Local mode binds to loopback; internet exposure requires hosted configuration and owner authentication. The database defaults to `data/company.sqlite3`; changing `--database` selects a separate virtual company.
 
-## Inspect and influence the company
+## Follow the company in four views
 
-- **Overview**: cash, commitments, profit, current work. Run a cycle: a $24 virtual sale incurs $4.50 costs and provisions its full $24 refund liability.
-- **Agent team / Company map**: inspect each worker's position, manager, owned functions, permissions, and restrictions. Disable a worker to block its dependent workflow; Treasury remains mandatory.
-- **Execution & inference**: inspect recorded function inputs, outputs, routing, durations, nested accounting spans, and the linked outcome. Model calls/tokens/costs remain zero because no model provider exists.
-- **Businesses / Treasury**: reserve experiments, execute or cancel simulated expenses, refund orders, inspect balanced journals, export CSV.
-- **Controls**: pause/resume, auto-run, spending limits, and budget allocations. Pause permits refunds and cancellations. Auto-run stops on policy denial.
+- **Balance**: settled cash, available funds, protected money, and recent transactions. Spending limits, team budgets, automatic tasks, refunds and exports remain available in secondary controls.
+- **Messages**: a channel-based team board (`general`, `product-team`, `finance`). Employees share recorded task handoffs and finance decisions; you can post persistent owner notes. Messages are escaped, authenticated, bounded in the dashboard and protected against duplicate submissions. Owner notes do not trigger model replies.
+- **Decisions**: proposed expenses awaiting your approval, tasks blocked by a worker or policy, and approved/declined expenses. Approvals use the existing financial checks; a paused company still permits declines and refunds.
+- **Company map**: an illustrated office with Operations, Finance, Research, and Production/Quality rooms. Operator manages Scout, Studio and Review; Treasury reports directly to you. Select an employee for responsibilities and task-specific model recommendations. Replay actual recorded handoffs, with room highlights and communication bubbles. The replay is a view of past work and never executes another task.
+
+Model recommendations distinguish reasoning, inexpensive drafting, and deterministic financial checks. No model provider is connected, and execution records continue to report zero model calls, tokens and cost. Previous task history is preserved; new messages are recorded with new tasks rather than backfilled as invented conversations.
 
 The virtual company starts with $1,000, a $400 protected reserve, $25 per-action and $40 daily limits, and $600 of cumulative operating allocations. Integer USD cents, atomic commitments, full 30-day refund coverage, append-only records, and persistent command idempotency enforce financial boundaries. Profit reinvestment and actual agent rewards/expansion are future work. Scripted profit does not validate customer demand or the $10,000/month stretch target.
 
@@ -35,7 +36,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The browser check uses an isolated authenticated company and captures eight dashboard views, worker controls, financial controls, session behavior, mobile width, and 200% text. Installed `/usr/bin/chromium` or `CORP_CHROMIUM_PATH` is also supported. Test artifacts and databases are ignored by Git. GitHub Actions runs these checks, a production dependency audit, and a container persistence/backup smoke test.
+The browser check uses an isolated authenticated company and captures the four workspace views, persisted owner notes, incoming-message draft preservation, task handoffs, decisions, worker and financial controls, session behavior, mobile width, and 200% text. Installed `/usr/bin/chromium` or `CORP_CHROMIUM_PATH` is also supported. Test artifacts and databases are ignored by Git. GitHub Actions runs these checks, a production dependency audit, and a container persistence/backup smoke test.
 
 ## Deploy staging
 
