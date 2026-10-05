@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import staticFiles from '@fastify/static';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
@@ -13,6 +13,8 @@ import { OperatorAuth, COOKIE, equal } from './auth.js';
 import { loadSettings, authRequired, type Settings } from './settings.js';
 import { DomainError } from './errors.js';
 import type { CommandKind } from './commands.js';
+import { SubscriptionCodex, type ModelProvider } from './codex-provider.js';
+import { ModelTasks } from './model-tasks.js';
 
 export async function createApp(
   options: {
@@ -20,6 +22,7 @@ export async function createApp(
     startWorker?: boolean;
     logger?: boolean;
     clock?: () => number;
+    modelProvider?: ModelProvider;
   } = {},
 ) {
   const settings = options.settings ?? loadSettings(),
@@ -34,6 +37,14 @@ export async function createApp(
   const auth = new OperatorAuth(db, settings, options.clock),
     localToken = randomBytes(32).toString('base64url'),
     staticRoot = resolve('public');
+  const provider =
+    options.modelProvider ??
+    new SubscriptionCodex(resolve(dirname(settings.databasePath), 'codex'));
+  const models = {
+    fast: process.env.CORP_CODEX_MODEL_FAST ?? null,
+    reasoning: process.env.CORP_CODEX_MODEL_REASONING ?? null,
+  };
+  const modelTasks = new ModelTasks(db, service, provider, models, options.clock);
   const app = Fastify({
     logger: options.logger ?? false,
     bodyLimit: settings.maxBodyBytes,
@@ -165,14 +176,36 @@ export async function createApp(
   });
   let schedulerHealthy = true;
   function ready(_req: FastifyRequest, reply: FastifyReply) {
-    if (!schedulerHealthy || !db.get('SELECT id FROM company WHERE id=1'))
+    if (!schedulerHealthy || !modelTasks.healthy || !db.get('SELECT id FROM company WHERE id=1'))
       return reply.code(503).send({ status: 'unavailable' });
     return { status: 'ok', mode: 'simulation', real_world_execution: false };
   }
   app.get('/api/health', ready);
   app.get('/health/ready', ready);
   app.get('/health/live', async () => ({ status: 'ok' }));
-  app.get('/api/state', async () => service.state());
+  app.get('/api/state', async () => {
+    const state = service.state(),
+      connection = await provider.status();
+    return {
+      ...state,
+      capabilities: { ...state.capabilities, llm_agents: connection.connected },
+      model_tasks: modelTasks.snapshot(),
+      model_connection: { ...connection, models },
+    };
+  });
+  app.post('/api/models/connect', async (req) => {
+    authorized(req);
+    if (!z.strictObject({}).safeParse(req.body ?? {}).success)
+      throw new DomainError('Unexpected connection fields.', 422);
+    if (!(await provider.status()).connected) provider.login();
+    return { message: 'Open Company map to complete ChatGPT sign-in.' };
+  });
+  app.post('/api/team/tasks', async (req, reply) => {
+    authorized(req);
+    const result = await modelTasks.enqueue(String(req.headers['idempotency-key'] ?? ''), req.body);
+    modelTasks.tick();
+    return reply.code(202).send(result);
+  });
   app.get('/api/inspector', async () => service.inspector());
   function mutate(
     path: string,
@@ -269,6 +302,7 @@ export async function createApp(
       : setInterval(() => {
           try {
             service.tick();
+            modelTasks.tick();
           } catch (error) {
             schedulerHealthy = false;
             if (timer) clearInterval(timer);
@@ -283,7 +317,8 @@ export async function createApp(
   timer?.unref();
   app.addHook('onClose', async () => {
     if (timer) clearInterval(timer);
+    await modelTasks.close();
     db.close();
   });
-  return { app, service, db, auth, settings, localToken };
+  return { app, service, db, auth, settings, localToken, modelTasks };
 }

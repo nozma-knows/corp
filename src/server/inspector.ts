@@ -238,6 +238,9 @@ export function inspectorSnapshot(db: Database, limit = 20): Inspector {
   const totals = db.get<{ executions: number; duration_ms: number }>(
     'SELECT COUNT(*) AS executions,COALESCE(SUM(duration_ms),0) AS duration_ms FROM execution_spans',
   )!;
+  const modelUsage = db.get<{ calls: number; input_tokens: number; output_tokens: number }>(
+    "SELECT COUNT(*) AS calls,COALESCE(SUM(input_tokens),0) AS input_tokens,COALESCE(SUM(output_tokens),0) AS output_tokens FROM model_steps WHERE status='completed'",
+  )!;
   return {
     registry_version: 1,
     workers: WORKERS.map((w) => ({
@@ -251,10 +254,10 @@ export function inspectorSnapshot(db: Database, limit = 20): Inspector {
     runs,
     totals: {
       ...totals,
-      model_calls: 0,
-      model_cost_micro_usd: 0,
-      input_tokens: 0,
-      output_tokens: 0,
+      model_calls: modelUsage.calls,
+      model_cost_micro_usd: modelUsage.calls ? null : 0,
+      input_tokens: modelUsage.input_tokens,
+      output_tokens: modelUsage.output_tokens,
     },
     routing: FUNCTIONS.map((f) => ({
       function_id: f.id,

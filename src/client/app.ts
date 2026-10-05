@@ -34,7 +34,13 @@ function navigation() {
 
 function paint() {
   if (!state) return;
-  ui.step = Math.max(0, Math.min(ui.step, (state.inspector.runs[0]?.spans.length ?? 1) - 1));
+  ui.step = Math.max(
+    0,
+    Math.min(
+      ui.step,
+      (state.model_tasks?.[0]?.steps.length || state.inspector.runs[0]?.spans.length || 1) - 1,
+    ),
+  );
   const settingsOpen = main.querySelector('.company-settings')?.hasAttribute('open');
   const composer = main.querySelector<HTMLTextAreaElement>('#message-body');
   const focused = document.activeElement === composer && !!composer;
@@ -53,6 +59,9 @@ function paint() {
     next?.setSelectionRange(selection[0], selection[1]);
   }
   navigation();
+  element('.mode-notice').textContent = state.model_connection?.connected
+    ? 'Real employee tasks use Codex with ChatGPT sign-in. Money and sales remain virtual.'
+    : 'Money and sales are virtual. Connect ChatGPT in Company map for real employee tasks.';
   element('#updated').textContent = `Updated ${date(state.server_time)}`;
 }
 
@@ -71,6 +80,8 @@ async function refresh(force = false) {
       inspector.workers,
       inspector.runs[0]?.id,
       next.messages.at(-1)?.id,
+      next.model_tasks,
+      next.model_connection,
     ]);
     state = nextState;
     if (force || signature !== lastSignature) paint();
@@ -196,6 +207,14 @@ document.addEventListener('click', async (event) => {
     ui.channel = channel.id;
     return paint();
   }
+  if (action === 'connect-chatgpt') return act('/api/models/connect');
+  if (action === 'team-task') {
+    ui.channel = 'product';
+    location.hash = 'messages';
+    paint();
+    main.querySelector<HTMLTextAreaElement>('#message-body')?.focus();
+    return;
+  }
   if (action === 'replay') return replay();
   if (action === 'handoff-step') {
     stopReplay();
@@ -246,7 +265,16 @@ document.addEventListener('submit', async (event) => {
   try {
     if (form.dataset.form === 'message') {
       const channel = ui.channel;
-      if (await act('/api/messages', { channel, body: fields.get('body') })) {
+      const team =
+        event instanceof SubmitEvent &&
+        event.submitter instanceof HTMLButtonElement &&
+        event.submitter.value === 'team';
+      if (
+        await act(
+          team ? '/api/team/tasks' : '/api/messages',
+          team ? { channel, goal: fields.get('body') } : { channel, body: fields.get('body') },
+        )
+      ) {
         drafts.delete(channel);
         paint();
         main.querySelector<HTMLTextAreaElement>('#message-body')?.focus({ preventScroll: true });

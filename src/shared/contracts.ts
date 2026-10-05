@@ -11,6 +11,40 @@ export interface TeamMessage {
   run_id: string | null;
   function_id: string | null;
   created_at: number;
+  model_task_id?: string | null;
+}
+export interface ModelStep {
+  id: string;
+  task_id: string;
+  sequence: number;
+  worker_id: WorkerId;
+  recipient_id: WorkerId | 'owner';
+  purpose: string;
+  model: string | null;
+  effort: 'low' | 'medium' | 'high';
+  status: 'running' | 'completed' | 'failed' | 'interrupted';
+  message: string | null;
+  artifact: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  duration_ms: number | null;
+  created_at: number;
+}
+export interface ModelTask {
+  id: string;
+  channel: MessageChannel;
+  goal: string;
+  status: 'queued' | 'running' | 'completed' | 'blocked';
+  active_worker: WorkerId | null;
+  error: string | null;
+  created_at: number;
+  steps: ModelStep[];
+}
+export interface ModelConnection {
+  connected: boolean;
+  login?: { url: string; code: string };
+  error?: string;
+  models: { fast: string | null; reasoning: string | null };
 }
 export interface Worker {
   id: WorkerId;
@@ -160,7 +194,7 @@ export interface Inspector {
     executions: number;
     duration_ms: number;
     model_calls: number;
-    model_cost_micro_usd: number;
+    model_cost_micro_usd: number | null;
     input_tokens: number;
     output_tokens: number;
   };
@@ -175,6 +209,8 @@ export interface Inspector {
   }[];
 }
 export interface State {
+  model_tasks?: ModelTask[];
+  model_connection?: ModelConnection;
   company: Balance & { order_count: number; refund_count: number; policy_healthy: boolean };
   envelopes: Envelope[];
   roles: Worker[];
@@ -187,7 +223,7 @@ export interface State {
   server_time: number;
   capabilities: {
     real_world_execution: false;
-    llm_agents: false;
+    llm_agents: boolean;
     simulator: 'scripted';
     profit_target_minor: number;
   };

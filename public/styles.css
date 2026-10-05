@@ -23,3 +23,9 @@
 
 .room-communication{display:flex;align-items:center;gap:8px;border:1px solid #cbd9be;border-radius:7px;padding:9px 11px;margin-top:10px;background:#fffdf8;position:relative;color:#65874e;font-size:.63rem}.room-communication:before{content:"";position:absolute;width:7px;height:7px;transform:rotate(45deg);background:#fffdf8;top:-4px;left:23px;border-top:1px solid #cbd9be;border-left:1px solid #cbd9be}.room-communication>.icon{width:15px;height:15px}.room-communication small{display:block;font-size:.55rem;color:#8b9980;margin-top:2px}.office-floor.replaying .room-active .person-figure{animation:office-talk 1.5s ease-in-out infinite}@keyframes office-talk{50%{transform:translateY(-3px)}}@media(prefers-reduced-motion:reduce){.office-floor.replaying .person-figure{animation:none}}
 .message-board{height:clamp(620px,calc(100vh - 310px),900px)}.message-feed{min-height:0}@media(max-width:760px){.message-board{height:auto;min-height:0;max-height:none}.channel-main{height:650px;max-height:85vh;min-height:540px}}
+.model-connection { margin-bottom: 24px; }
+.composer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.real-team-task h2 { overflow-wrap: anywhere; }
+.real-team-task details { margin-top: 16px; }
+.real-team-task summary { cursor: pointer; font-weight: 600; }
+.model-artifact { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; max-height: 420px; overflow: auto; padding: 12px; background: #f6f7f4; border-radius: 8px; }

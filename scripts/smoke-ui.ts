@@ -9,6 +9,7 @@ import { createApp } from '../src/server/api.js';
 import { hashPassword } from '../src/server/auth.js';
 import { loadSettings } from '../src/server/settings.js';
 import type { State } from '../src/shared/contracts.js';
+import type { ModelProvider } from '../src/server/codex-provider.js';
 const directory = mkdtempSync(join(tmpdir(), 'corp-browser-'));
 const password = 'isolated-browser-owner-password';
 const settings = loadSettings({
@@ -16,7 +17,35 @@ const settings = loadSettings({
   CORP_OPERATOR_PASSWORD_HASH: await hashPassword(password),
   CORP_SESSION_SECRET: randomBytes(48).toString('base64url'),
 });
-const { app } = await createApp({ settings, startWorker: false });
+// Fixtures validate browser → API → orchestration → SQLite. CI never authenticates or bills a provider.
+let modelConnected = false;
+let loginStarted = false;
+let modelCalls = 0;
+const modelProvider: ModelProvider = {
+  async status() {
+    return {
+      connected: modelConnected,
+      login:
+        loginStarted && !modelConnected
+          ? { url: 'https://auth.openai.com/codex/device', code: 'TEST-CODE' }
+          : undefined,
+    };
+  },
+  login() {
+    loginStarted = true;
+  },
+  close() {},
+  async generate() {
+    modelCalls++;
+    return {
+      message: `Fixture employee handoff ${modelCalls}`,
+      artifact: `Fixture deliverable ${modelCalls}\n<img src=x onerror=alert(1)>`,
+      input_tokens: 100,
+      output_tokens: 40,
+    };
+  },
+};
+const { app } = await createApp({ settings, startWorker: false, modelProvider });
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 mkdirSync('artifacts', { recursive: true });
 async function waitFor(page: Page, check: () => Promise<boolean>, description: string) {
@@ -76,7 +105,7 @@ try {
     fullPage: true,
     style: '#toast {visibility:hidden}',
   });
-  await page.getByRole('button', { name: 'Start team task', exact: true }).click();
+  await page.getByRole('button', { name: 'Run virtual sale', exact: true }).click();
   await waitFor(page, async () => (await state()).company.cash_minor === 101950, 'sale settlement');
   await page.getByRole('heading', { name: 'Company map', exact: true }).waitFor();
   await waitFor(
@@ -95,7 +124,7 @@ try {
   assert.match(await page.locator('#modal').innerText(), /Fast model/i);
   await page.getByRole('button', { name: 'Disable worker', exact: true }).click();
   await waitFor(page, async () => !(await page.locator('#modal').isVisible()), 'worker disabled');
-  await page.getByRole('button', { name: 'Start team task', exact: true }).click();
+  await page.getByRole('button', { name: 'Run virtual sale', exact: true }).click();
   await waitFor(
     page,
     async () => (await page.locator('#toast').innerText()).includes('Studio is disabled'),
@@ -220,13 +249,64 @@ try {
   await page.getByLabel('Per-action ceiling (USD)').fill('1');
   await page.getByRole('button', { name: 'Save limits', exact: true }).click();
   await waitFor(page, async () => (await state()).company.action_limit_minor === 100, 'limits');
-  await page.getByRole('button', { name: 'Start team task', exact: true }).click();
+  await page.getByRole('button', { name: 'Run virtual sale', exact: true }).click();
   await waitFor(
     page,
     async () => (await page.locator('#toast').innerText()).includes('per-action spending limit'),
     'spending limit blocks task',
   );
   assert.equal((await state()).company.order_count, 2);
+  await nav('Company map');
+  await page.getByRole('button', { name: 'Connect ChatGPT', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await page.locator('.model-connection').innerText()).includes('TEST-CODE'),
+    'device sign-in code',
+  );
+  assert.equal(
+    await page.getByRole('link', { name: 'OpenAI’s Codex sign-in' }).getAttribute('href'),
+    'https://auth.openai.com/codex/device',
+  );
+  modelConnected = true;
+  await waitFor(
+    page,
+    async () =>
+      (await page.locator('.model-connection').innerText()).includes('Connected through Codex'),
+    'subscription connection',
+  );
+  await page.getByRole('button', { name: 'Start team task', exact: true }).click();
+  await page
+    .getByLabel('Message #product-team', { exact: true })
+    .fill('Write a launch email; do not send it.');
+  const cashBefore = (await state()).company.cash_minor;
+  await page.getByRole('button', { name: 'Ask team', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await state()).model_tasks?.[0]?.status === 'completed',
+    'actual orchestration with fixture transport',
+  );
+  await waitFor(
+    page,
+    async () =>
+      (await page.locator('.message-feed').innerText()).includes('Fixture employee handoff 5'),
+    'saved provider handoffs',
+  );
+  assert.equal(modelCalls, 5);
+  assert.equal((await state()).company.cash_minor, cashBefore);
+  assert.equal(
+    await page.locator('.message-task-label').filter({ hasText: 'AI reply' }).count(),
+    5,
+  );
+  await nav('Company map');
+  assert.match(await page.locator('.real-team-task').innerText(), /Fixture deliverable 5/);
+  assert.match(await page.locator('.real-team-task').innerText(), /Codex default/);
+  assert.equal(await page.locator('.model-artifact img').count(), 0);
+  assert.match(await page.locator('.model-artifact').last().innerText(), /<img src=x/);
+  await page.screenshot({
+    path: 'artifacts/company-map-model-task.png',
+    fullPage: true,
+    style: '#toast {visibility:hidden}',
+  });
   // Verify every view on a phone and with larger text, not only the landing view.
   for (const view of ['Balance', 'Messages', 'Decisions', 'Company map']) {
     await nav(view);
@@ -250,17 +330,16 @@ try {
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await nav('Company map');
-  await page.getByRole('button', { name: 'Replay teamwork', exact: true }).click();
   assert.ok(
-    !(await page.locator('.replay-label').innerText()).includes('Replaying'),
-    'Reduced motion skips timed replay',
+    !(await page.locator('.office-floor').getAttribute('class'))?.includes('replaying'),
+    'Reduced motion has no timed replay',
   );
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByLabel('Operator password').waitFor();
   assert.equal((await page.request.get(url + '/api/state')).status(), 401);
   assert.deepEqual(errors, []);
   console.log(
-    'Browser verified: four views, balance and decisions, persisted safe messages, incoming update drafts, employee hierarchy, task replay, financial/worker controls, mobile and 200% text, sign-in/out.',
+    'Browser verified: subscription sign-in UI, five-call model task using fixture provider, safe saved deliverables, four views, balance and decisions, persisted safe messages, incoming update drafts, employee hierarchy, task replay, financial/worker controls, mobile and 200% text, sign-in/out.',
   );
 } finally {
   await browser?.close();

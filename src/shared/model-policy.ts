@@ -1,6 +1,6 @@
 import type { WorkerId } from './contracts.js';
 
-/** Recommendations for a future provider connection, separate from recorded execution. */
+/** Task routing intent. The configured Codex model and effort are recorded for real tasks. */
 export const modelPlans: Record<WorkerId, { task: string; model: string; reason: string }[]> = {
   researcher: [
     {
