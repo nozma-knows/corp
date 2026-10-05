@@ -39,7 +39,7 @@ The browser check uses an isolated authenticated company and captures eight dash
 
 ## Deploy staging
 
-The [deployment runbook](docs/deployment.md) covers configuration, secret generation, Render provisioning, container testing, backups, recovery, and rollout checks. [render.yaml](render.yaml) defines one authenticated Docker service with persistent storage. Provisioning needs a hosting account; applying the blueprint can incur provider charges. Review the current price in that account first.
+The [deployment runbook](docs/deployment.md) covers Railway configuration, secret generation, container testing, backups, recovery, and rollout checks. [`.railway/railway.ts`](.railway/railway.ts) defines one authenticated Docker service from `main` with persistent storage using TypeScript IaC. It needs a dedicated Railway project, sealed shared credentials, and a public domain targeting port 8000. Hosting access is not connected here; the definition is prepared for deployment, not a deployed service. Review the account’s current price before provisioning.
 
 Hosted mode refuses to start without an HTTPS origin, an operator password hash, a random session secret, and an absolute persistent database path. Password sessions use HttpOnly/Secure/SameSite cookies, expiration and revocation, CSRF/origin checks, persistent login throttling, and generic error responses. APIs and exports require owner access. Secrets belong in the hosting provider, never in Git or chat.
 
@@ -51,8 +51,9 @@ src/client/   Typed dashboard, controls and execution inspector
 src/shared/   API contracts shared by server and browser
 migrations/   Checksum-verified SQLite schema migrations
 public/       HTML, styles, icons; generated browser bundles are ignored
-scripts/   Build and isolated browser/container verification
-tests/    Financial, inspector, API/security and recovery tests
+scripts/     Build and isolated browser/container verification
+tests/       Financial, inspector, API/security and recovery tests
+.railway/    TypeScript infrastructure definition
 ```
 
 SQLite WAL and a single process suit this bounded staging simulation. The TypeScript migration preserves the original database schema and legacy command replay; stop the Python service and take a verified backup before switching an existing database. This architecture is not ready for horizontally scaled live financial operations. Those require PostgreSQL, durable external-action workflows, provider/webhook verification, payment reconciliation, verified capital, delivery artifacts, and model cost admission. See [implementation status](docs/implementation-status.md) and the [launch plan](docs/launch-plan.md).
