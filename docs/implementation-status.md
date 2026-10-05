@@ -9,8 +9,10 @@ Implemented:
 - Persistent idempotent successes/denials, rollback, pause/resume, cancellation, refunds, and atomic scripted ticks.
 - Worker positions, hierarchy, owned functions, boundaries, disable/enable control, durable execution spans and nested accounting links.
 - Four dashboard views: Balance, Messages, Decisions and Company map, with responsive controls and saved team handoffs.
+- Gather-style Phaser office with animated walking avatars, collision-aware paths, team meetings linked to actual task handoffs, employee inspection, keyboard/touch controls, responsive zoom, reduced motion and WebGL/Canvas rendering. Local meeting previews do not execute model calls.
 - Real, bounded employee text tasks through the official Codex SDK and owner ChatGPT sign-in; persistent responses, generated deliverables, token usage, configurable model routes and reasoning effort.
 - Separate async model execution with durable admission, no automatic retry of interrupted calls, owner-only device sign-in and private persistent authentication.
+- In-house agent orchestration: adaptive Operator delegation, durable parent/subtask state, typed tool actions and feedback, per-employee cross-task memory, task artifacts, activity history, independent review of Studio work, bounded calls/usage/time, owner cancellation and interruption recovery without replay.
 - Hosted owner sessions, HTTPS configuration checks, CSRF/origin protection, login throttling, protected API/export, request IDs and security headers.
 - Checksum-verified migrations, startup integrity checks, verified online backups and restore tests.
 - Non-root application container, Railway TypeScript infrastructure and root-owned volume initialization, readiness/liveness, graceful shutdown, CI and isolated browser/container smoke checks.

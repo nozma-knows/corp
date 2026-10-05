@@ -9,7 +9,8 @@ import { createApp } from '../src/server/api.js';
 import { hashPassword } from '../src/server/auth.js';
 import { loadSettings } from '../src/server/settings.js';
 import type { State } from '../src/shared/contracts.js';
-import type { ModelProvider } from '../src/server/codex-provider.js';
+import type { AgentAction } from '../src/shared/agent-contracts.js';
+import type { ModelProvider, ModelReply } from '../src/server/codex-provider.js';
 const directory = mkdtempSync(join(tmpdir(), 'corp-browser-'));
 const password = 'isolated-browser-owner-password';
 const settings = loadSettings({
@@ -21,6 +22,18 @@ const settings = loadSettings({
 let modelConnected = false;
 let loginStarted = false;
 let modelCalls = 0;
+let modelWait: Promise<void> | undefined;
+let modelRelease: () => void = () => {};
+let customReplies: ModelReply[] | undefined;
+const fixtureActions: AgentAction[] = [
+  { type: 'delegate', worker: 'researcher', brief: 'Develop the launch brief.' },
+  { type: 'complete' },
+  { type: 'delegate', worker: 'creator', brief: 'Create the launch email.' },
+  { type: 'complete' },
+  { type: 'delegate', worker: 'reviewer', brief: 'Review the saved launch email.' },
+  { type: 'complete' },
+  { type: 'complete' },
+];
 const modelProvider: ModelProvider = {
   async status() {
     return {
@@ -37,7 +50,14 @@ const modelProvider: ModelProvider = {
   close() {},
   async generate() {
     modelCalls++;
+    if (modelWait) await modelWait;
+    if (customReplies) {
+      const result = customReplies.shift();
+      assert.ok(result, 'Fixture reply required for each agent turn');
+      return result;
+    }
     return {
+      action: fixtureActions[(modelCalls - 1) % fixtureActions.length],
       message: `Fixture employee handoff ${modelCalls}`,
       artifact: `Fixture deliverable ${modelCalls}\n<img src=x onerror=alert(1)>`,
       input_tokens: 100,
@@ -114,6 +134,94 @@ try {
     'six recorded handoffs',
   );
   await page.locator('.handoff-step').filter({ hasText: 'Studio' }).click();
+  const office = page.locator('#office-world');
+  await waitFor(
+    page,
+    async () => (await office.getAttribute('data-ready')) === 'true',
+    'Phaser office ready',
+  );
+  assert.equal(await office.getAttribute('data-people'), '6');
+  assert.equal(await office.locator('canvas').count(), 1);
+  await office
+    .locator('canvas')
+    .evaluate((canvas) => canvas.setAttribute('data-verification', 'retained'));
+  await page.locator('.handoff-step').first().click();
+  assert.equal(await office.locator('canvas').getAttribute('data-verification'), 'retained');
+  await page.getByRole('button', { name: 'Control your avatar', exact: true }).click();
+  await waitFor(
+    page,
+    async () => Number(await office.getAttribute('data-owner-y')) > 0,
+    'owner placed',
+  );
+  const initialY = Number(await office.getAttribute('data-owner-y'));
+  await page.keyboard.press('ArrowDown');
+  await waitFor(
+    page,
+    async () => Number(await office.getAttribute('data-owner-y')) >= initialY + 31,
+    'keyboard walking',
+  );
+  await page.keyboard.press('ArrowUp');
+  await waitFor(
+    page,
+    async () => Math.abs(Number(await office.getAttribute('data-owner-y')) - initialY) < 1,
+    'walk back to desk',
+  );
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(200);
+  assert.equal(
+    Number(await office.getAttribute('data-owner-y')),
+    initialY,
+    'desk collision prevents walking through furniture',
+  );
+  assert.match(await page.locator('#office-world-status').innerText(), /open floor/);
+  const bounds = await office.locator('canvas').boundingBox();
+  assert.ok(bounds);
+  await page.mouse.click(
+    bounds.x + (bounds.width * 10.5) / 32,
+    bounds.y + (bounds.height * 7.5) / 24,
+  );
+  await waitFor(
+    page,
+    async () => Math.abs(Number(await office.getAttribute('data-owner-x')) - 336) < 1,
+    'click-to-walk',
+  );
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  assert.equal(await office.getAttribute('data-zoom'), '1.25');
+  await page.getByRole('button', { name: 'Fit office', exact: true }).click();
+  assert.equal(await office.getAttribute('data-zoom'), '1.00');
+  await page.getByRole('button', { name: 'Pause motion', exact: true }).click();
+  assert.equal(await office.getAttribute('data-motion'), 'paused');
+  const pausedX = await office.getAttribute('data-owner-x');
+  await page.getByRole('button', { name: 'Walk right', exact: true }).click();
+  await page.waitForTimeout(200);
+  assert.equal(await office.getAttribute('data-owner-x'), pausedX);
+  await page.getByRole('button', { name: 'Resume motion', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview a meeting', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await office.getAttribute('data-phase')) === 'meeting',
+    'characters walk to meeting table',
+  );
+  assert.equal(modelCalls, 0, 'preview never calls a model');
+  assert.equal((await state()).company.order_count, 1, 'preview never creates sales');
+  await page.locator('.handoff-step').first().click();
+  assert.match(await page.locator('#office-world-status').innerText(), /Office preview/);
+  assert.equal(await office.getAttribute('data-phase'), 'meeting');
+  const meetingBounds = await office.locator('canvas').boundingBox();
+  assert.ok(meetingBounds);
+  await page.mouse.click(
+    meetingBounds.x + (meetingBounds.width * 464) / 1024,
+    meetingBounds.y + (meetingBounds.height * 344) / 768,
+  );
+  await page.locator('#modal[open]').waitFor();
+  assert.match(await page.locator('#modal').innerText(), /Operator/);
+  await page.locator('#modal [data-action="close"]').click();
+  await page.screenshot({
+    path: 'artifacts/gather-office-meeting.png',
+    fullPage: true,
+    style: '#toast {visibility:hidden}',
+  });
+
   await page.screenshot({
     path: 'artifacts/company-map.png',
     fullPage: true,
@@ -279,34 +387,130 @@ try {
     .getByLabel('Message #product-team', { exact: true })
     .fill('Write a launch email; do not send it.');
   const cashBefore = (await state()).company.cash_minor;
+  modelWait = new Promise((done) => {
+    modelRelease = done;
+  });
   await page.getByRole('button', { name: 'Ask team', exact: true }).click();
+  await nav('Company map');
+  await waitFor(
+    page,
+    async () => (await page.locator('#office-world').getAttribute('data-ready')) === 'true',
+    'live office ready',
+  );
+  assert.match(await page.locator('#office-world-status').innerText(), /Live task/);
+  assert.match(
+    await page.getByRole('button', { name: 'Inspect Operator', exact: true }).innerText(),
+    /Working/,
+  );
+  assert.equal((await state()).model_tasks?.[0]?.active_worker, 'operator');
+  modelWait = undefined;
+  modelRelease();
   await waitFor(
     page,
     async () => (await state()).model_tasks?.[0]?.status === 'completed',
     'actual orchestration with fixture transport',
   );
+  await nav('Messages');
   await waitFor(
     page,
     async () =>
-      (await page.locator('.message-feed').innerText()).includes('Fixture employee handoff 5'),
+      (await page.locator('.message-feed').innerText()).includes('Fixture employee handoff 7'),
     'saved provider handoffs',
   );
-  assert.equal(modelCalls, 5);
+  assert.equal(modelCalls, 7);
   assert.equal((await state()).company.cash_minor, cashBefore);
   assert.equal(
     await page.locator('.message-task-label').filter({ hasText: 'AI reply' }).count(),
-    5,
+    7,
   );
   await nav('Company map');
-  assert.match(await page.locator('.real-team-task').innerText(), /Fixture deliverable 5/);
+  assert.match(await page.locator('.real-team-task').innerText(), /Fixture deliverable 7/);
   assert.match(await page.locator('.real-team-task').innerText(), /Codex default/);
   assert.equal(await page.locator('.model-artifact img').count(), 0);
   assert.match(await page.locator('.model-artifact').last().innerText(), /<img src=x/);
+  assert.match(await page.locator('.agent-activity summary').first().innerText(), /7\/12 turns/);
   await page.screenshot({
     path: 'artifacts/company-map-model-task.png',
     fullPage: true,
     style: '#toast {visibility:hidden}',
   });
+  customReplies = [
+    {
+      action: { type: 'memory.write', key: 'tone', value: 'Plain language across future tasks.' },
+      message: 'Remembering your preference.',
+      artifact: '',
+      input_tokens: 50,
+      output_tokens: 20,
+    },
+    {
+      action: { type: 'complete' },
+      message: 'Preference saved.',
+      artifact: 'Future drafts should use plain language.',
+      input_tokens: 50,
+      output_tokens: 20,
+    },
+  ];
+  await nav('Messages');
+  await page.locator('#message-body').fill('Remember that our brand uses plain language.');
+  await page.getByRole('button', { name: 'Ask team', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await state()).agent_memory?.some((memory) => memory.key === 'tone') ?? false,
+    'memory saved through an agent tool',
+  );
+  await waitFor(
+    page,
+    async () => (await state()).model_tasks?.[0]?.status === 'completed',
+    'memory task completed',
+  );
+  await nav('Company map');
+  await page.getByRole('button', { name: 'Inspect Operator', exact: true }).click();
+  await page.locator('.employee-memory summary').click();
+  assert.match(
+    await page.locator('.employee-memory').innerText(),
+    /Plain language across future tasks/,
+  );
+  await page.getByRole('button', { name: 'Clear memory tone', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await state()).agent_memory?.length === 0,
+    'owner clears persistent memory',
+  );
+  await page.locator('#modal').waitFor({ state: 'hidden' });
+
+  customReplies = [
+    {
+      action: {
+        type: 'artifact.save',
+        name: 'late-result',
+        content: 'Must never execute after cancellation',
+      },
+      message: 'Late reply',
+      artifact: '',
+      input_tokens: 50,
+      output_tokens: 20,
+    },
+  ];
+  modelWait = new Promise((resolve) => {
+    modelRelease = resolve;
+  });
+  await nav('Messages');
+  await page.locator('#message-body').fill('Start a task that I will cancel.');
+  await page.getByRole('button', { name: 'Ask team', exact: true }).click();
+  await nav('Company map');
+  await page.getByRole('button', { name: 'Stop team task', exact: true }).click();
+  await waitFor(
+    page,
+    async () => (await state()).model_tasks?.[0]?.error?.includes('Cancelled by owner') ?? false,
+    'owner cancels active agent work',
+  );
+  modelWait = undefined;
+  modelRelease();
+  await page.waitForTimeout(100);
+  assert.equal((await state()).model_tasks?.[0]?.steps[0].status, 'interrupted');
+  assert.equal((await state()).model_tasks?.[0]?.runtime?.artifacts.length, 0);
+  assert.equal((await state()).company.cash_minor, cashBefore);
+  customReplies = undefined;
   // Verify every view on a phone and with larger text, not only the landing view.
   for (const view of ['Balance', 'Messages', 'Decisions', 'Company map']) {
     await nav(view);
@@ -330,18 +534,86 @@ try {
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await nav('Company map');
-  assert.ok(
-    !(await page.locator('.office-floor').getAttribute('class'))?.includes('replaying'),
-    'Reduced motion has no timed replay',
+  await waitFor(
+    page,
+    async () => (await page.locator('#office-world').getAttribute('data-motion')) === 'reduced',
+    'reduced-motion office',
   );
+  await page.getByRole('button', { name: 'Preview a meeting', exact: true }).click();
+  const reducedCanvas = page.locator('#office-world canvas');
+  await page.waitForTimeout(100);
+  const stillFrame = await reducedCanvas.evaluate((canvas) =>
+    (canvas as HTMLCanvasElement).toDataURL(),
+  );
+  await page.waitForTimeout(400);
+  assert.equal(
+    await reducedCanvas.evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL()),
+    stillFrame,
+    'reduced motion keeps the scene still',
+  );
+  await nav('Balance');
+  assert.equal(await page.locator('#office-world canvas').count(), 0);
+  await nav('Company map');
+  await waitFor(
+    page,
+    async () => (await page.locator('#office-world').getAttribute('data-ready')) === 'true',
+    'office remount',
+  );
+  assert.equal(
+    await page.locator('#office-world canvas').count(),
+    1,
+    'navigation does not leak canvases',
+  );
+  const fallbackBrowser = await chromium.launch({
+    headless: true,
+    executablePath,
+    args: ['--no-sandbox', '--disable-webgl'],
+  });
+  try {
+    const fallbackContext = await fallbackBrowser.newContext({
+      storageState: await page.context().storageState(),
+      viewport: { width: 1280, height: 1000 },
+    });
+    const fallback = await fallbackContext.newPage();
+    fallback.on('pageerror', (error) => errors.push(error.message));
+    await fallback.goto(url + '/#company', { waitUntil: 'networkidle' });
+    const fallbackOffice = fallback.locator('#office-world');
+    await waitFor(
+      fallback,
+      async () => (await fallbackOffice.getAttribute('data-ready')) === 'true',
+      'Canvas fallback ready',
+    );
+    assert.equal(await fallbackOffice.getAttribute('data-renderer'), 'canvas');
+    await fallback.getByRole('button', { name: 'Control your avatar', exact: true }).click();
+    await waitFor(
+      fallback,
+      async () => Number(await fallbackOffice.getAttribute('data-owner-y')) > 0,
+      'fallback owner placed',
+    );
+    const before = Number(await fallbackOffice.getAttribute('data-owner-y'));
+    await fallback.keyboard.press('ArrowDown');
+    await waitFor(
+      fallback,
+      async () => Number(await fallbackOffice.getAttribute('data-owner-y')) > before + 30,
+      'fallback animation',
+    );
+    await fallback.screenshot({
+      path: 'artifacts/gather-office-canvas-fallback.png',
+      fullPage: true,
+    });
+  } finally {
+    await fallbackBrowser.close();
+  }
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByLabel('Operator password').waitFor();
   assert.equal((await page.request.get(url + '/api/state')).status(), 401);
   assert.deepEqual(errors, []);
   console.log(
-    'Browser verified: subscription sign-in UI, five-call model task using fixture provider, safe saved deliverables, four views, balance and decisions, persisted safe messages, incoming update drafts, employee hierarchy, task replay, financial/worker controls, mobile and 200% text, sign-in/out.',
+    'Browser verified: Phaser office, walking, collision, meetings, sprite inspection, retained scene, zoom, reduced motion, subscription sign-in UI, adaptive delegated agent task, persistent memory save/clear, in-flight cancellation, safe saved deliverables, four views, balance and decisions, persisted safe messages, incoming update drafts, employee hierarchy, task replay, financial/worker controls, mobile and 200% text, sign-in/out. Model transport uses fixtures.',
   );
 } finally {
+  modelWait = undefined;
+  modelRelease();
   await browser?.close();
   await app.close();
   rmSync(directory, { recursive: true, force: true });
