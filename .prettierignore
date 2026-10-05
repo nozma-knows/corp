@@ -1,0 +1,7 @@
+node_modules/
+dist/
+public/*.js
+public/*.map
+artifacts/
+package-lock.json
+data/

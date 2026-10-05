@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "mode": "simulation",
+  "live_execution_enabled": false,
+  "currency": "USD",
+  "minor_unit_exponent": 2,
+  "accounting_timezone": "UTC",
+  "virtual_opening_balance_minor": 100000,
+  "protected_reserve_minor": 40000,
+  "discretionary_action_limit_minor": 2500,
+  "discretionary_daily_limit_minor": 4000,
+  "allow_debt": false,
+  "allow_unbounded_cost_actions": false,
+  "pause_on_unresolved_reconciliation": true,
+  "envelopes_minor": {
+    "models_tools_hosting": 15000,
+    "brand_store_listings": 10000,
+    "creation_quality": 10000,
+    "customer_acquisition": 15000,
+    "opportunity_tests": 10000
+  }
+}

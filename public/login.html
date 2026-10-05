@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="login-token" content="__LOGIN_TOKEN__">
+  <title>Sign in · Corp Company Lab</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="module" src="/static/login.js"></script>
+</head>
+<body class="login-page">
+  <main class="login-surface">
+    <a class="brand login-brand" href="/" aria-label="Corp"><span class="brand-mark">c</span><span>corp<span class="brand-dot">.</span><small>COMPANY LAB</small></span></a>
+    <section class="login-card">
+      <span class="eyebrow">OWNER WORKSPACE</span>
+      <h1>Sign in to your company.</h1>
+      <p>Inspect the work, control the capital, and follow every decision.</p>
+      <form id="login-form">
+        <label>Operator password<input name="password" type="password" autocomplete="current-password" required maxlength="1024" autofocus></label>
+        <div id="login-error" class="form-error" role="alert"></div>
+        <button class="button primary" type="submit">Sign in</button>
+      </form>
+      <div class="login-footnote">This workspace uses virtual money and local scripted workers. Real-world spending and model inference are disabled.</div>
+    </section>
+    <p class="login-meta">Private owner access · Sessions expire after 8 hours</p>
+  </main>
+</body>
+</html>
