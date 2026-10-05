@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import type { Database } from './database.js';
 import { WORKERS, FUNCTIONS, FUNCTION_BY_ID, WORKER_BY_ID } from './registry.js';
 import { DomainError } from './errors.js';
+import { postMessage } from './messages.js';
 import type {
   FunctionDefinition,
   Inspector,
@@ -112,6 +113,76 @@ export class RunTrace {
         this.now,
       );
     }
+    const product = this.db.get<{ title: string }>(
+      'SELECT title FROM products WHERE id=?',
+      this.productId,
+    )!;
+    const blocked = this.records.find((record) => record.status === 'blocked');
+    if (blocked) {
+      // Earlier computations in a blocked run were rolled back. Report the block,
+      // never announce an approval or delivery that did not commit.
+      const output = blocked.output as { reason: string };
+      postMessage(
+        this.db,
+        'product',
+        blocked.fn.worker_id,
+        `${product.title} is blocked: ${output.reason} No sale or expense was committed.`,
+        this.now,
+        'operator',
+        this.id,
+        blocked.fn.id,
+      );
+      return;
+    }
+    const handoffs: Record<
+      string,
+      { to: WorkerId | 'owner'; channel: 'product' | 'finance'; body: string }
+    > = {
+      select_product: {
+        to: 'treasury',
+        channel: 'product',
+        body: `I've selected ${product.title} for our next scenario. Treasury, please check the production budget.`,
+      },
+      authorize_budget: {
+        to: 'creator',
+        channel: 'product',
+        body: 'The production budget passed our limits. Studio, you can prepare the delivery specification.',
+      },
+      prepare_delivery: {
+        to: 'reviewer',
+        channel: 'product',
+        body: `The delivery specification for ${product.title} is ready. Review, please check the price, cost and delivery details.`,
+      },
+      check_delivery: {
+        to: 'operator',
+        channel: 'product',
+        body: 'The specification passed quality checks. Operator, you can deliver and settle the virtual order.',
+      },
+      settle_order: {
+        to: 'treasury',
+        channel: 'product',
+        body: `The virtual order for ${product.title} was delivered. Treasury, the settlement is ready to reconcile.`,
+      },
+      post_ledger: {
+        to: 'owner',
+        channel: 'finance',
+        body: 'The sale and production cost are recorded. Sale proceeds are held for 30-day refund coverage.',
+      },
+    };
+    for (const record of this.records) {
+      const handoff = handoffs[record.fn.id];
+      if (handoff)
+        postMessage(
+          this.db,
+          handoff.channel,
+          record.fn.worker_id,
+          handoff.body,
+          this.now,
+          handoff.to,
+          this.id,
+          record.fn.id,
+        );
+    }
   }
 }
 export function recordBlocked(db: Database, productId: string, error: DomainError, now: number) {
@@ -167,6 +238,9 @@ export function inspectorSnapshot(db: Database, limit = 20): Inspector {
   const totals = db.get<{ executions: number; duration_ms: number }>(
     'SELECT COUNT(*) AS executions,COALESCE(SUM(duration_ms),0) AS duration_ms FROM execution_spans',
   )!;
+  const modelUsage = db.get<{ calls: number; input_tokens: number; output_tokens: number }>(
+    "SELECT COUNT(*) AS calls,COALESCE(SUM(input_tokens),0) AS input_tokens,COALESCE(SUM(output_tokens),0) AS output_tokens FROM model_steps WHERE status='completed'",
+  )!;
   return {
     registry_version: 1,
     workers: WORKERS.map((w) => ({
@@ -180,10 +254,10 @@ export function inspectorSnapshot(db: Database, limit = 20): Inspector {
     runs,
     totals: {
       ...totals,
-      model_calls: 0,
-      model_cost_micro_usd: 0,
-      input_tokens: 0,
-      output_tokens: 0,
+      model_calls: modelUsage.calls,
+      model_cost_micro_usd: modelUsage.calls ? null : 0,
+      input_tokens: modelUsage.input_tokens,
+      output_tokens: modelUsage.output_tokens,
     },
     routing: FUNCTIONS.map((f) => ({
       function_id: f.id,

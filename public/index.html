@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Follow an agent-operated digital company, control its capital, and inspect every simulated decision.">
+  <meta name="description" content="Follow your company balance, employee messages, decisions and office teamwork.">
   <meta name="operator-token" content="__OPERATOR_TOKEN__">
   <title>Corp · Company Lab</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -13,15 +13,15 @@
 <body data-auth-mode="__AUTH_MODE__">
   <div class="layout">
     <aside class="sidebar">
-      <a class="brand" href="#overview" aria-label="Corp overview"><span class="brand-mark">c</span><span>corp<span class="brand-dot">.</span><small>COMPANY LAB</small></span></a>
-      <div class="company-switch"><span class="company-icon">C</span><div>Digital company<small>Starting from zero</small></div><span class="switch-dot"></span></div>
+      <a class="brand" href="#balance" aria-label="Corp balance"><span class="brand-mark">c</span><span>corp<span class="brand-dot">.</span><small>YOUR COMPANY</small></span></a>
+      <div class="company-switch"><span class="company-icon">C</span><div>Company workspace<small>One team. Shared goals.</small></div><span class="switch-dot"></span></div>
       <div class="nav-label">WORKSPACE</div>
       <nav id="navigation" aria-label="Main navigation"></nav>
-      <div class="sidebar-bottom"><div class="sidebar-rule"></div><span class="small-label">FIRST MILESTONE</span><p>One sale.<br>Every dollar explained.</p><div class="sidebar-progress"><span></span></div><small>Build → test → launch</small><div class="owner"><span class="avatar">Y</span><div>You<small>Company owner</small></div></div></div>
+      <div class="sidebar-bottom"><div class="sidebar-rule"></div><span class="small-label">A COMPANY YOU CAN FOLLOW</span><p>The money.<br>The people.<br>The decisions.</p><div class="owner"><span class="avatar">Y</span><div>You<small>Company owner</small></div></div></div>
     </aside>
     <div class="workspace">
-      <header class="topbar"><div><span class="breadcrumb">COMPANY</span><span class="crumb-divider">/</span><span id="view-label">Overview</span></div><div class="topbar-right"><span class="simulation-badge"><span></span> Simulation</span><span id="connection" class="connection">Connecting…</span><button class="text-button" id="sign-out" data-action="logout" hidden>Sign out</button><span class="topbar-avatar">Y</span></div></header>
-      <div class="mode-notice"><span class="notice-icon">i</span><span><strong>Virtual money. Scripted agents.</strong> Test the operating system here. No real sales, spending, or AI calls are made.</span></div>
+      <header class="topbar"><div><span class="breadcrumb">COMPANY</span><span class="crumb-divider">/</span><span id="view-label">Balance</span></div><div class="topbar-right"><span class="simulation-badge"><span></span> Virtual balance</span><span id="connection" class="connection">Connecting…</span><button class="text-button" id="sign-out" data-action="logout" hidden>Sign out</button><span class="topbar-avatar">Y</span></div></header>
+      <div class="mode-notice"><span class="notice-icon">i</span><span>Money and sales are virtual. Connect ChatGPT in Company map for real employee tasks.</span></div>
       <main id="main" tabindex="-1"><div class="loading-state">Loading your company…</div></main>
       <footer class="footer"><span>Corp Company Lab <span class="footer-dot">·</span> USD <span class="footer-dot">·</span> Financial day: UTC</span><span id="updated">Waiting for company state</span></footer>
     </div>

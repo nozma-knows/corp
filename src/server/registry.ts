@@ -8,8 +8,12 @@ export const WORKERS: Worker[] = [
     department: 'Strategy',
     manager_id: 'operator',
     kind: 'agent',
-    purpose: 'Select a product hypothesis for a scripted scenario.',
-    permissions: ['Read product concepts', 'Select scenario product'],
+    purpose: 'Develop a research brief for real team tasks and select virtual-sale hypotheses.',
+    permissions: [
+      'Read product concepts',
+      'Develop supplied-information briefs',
+      'Select scenario product',
+    ],
     restrictions: ['No external research or outreach', 'Cannot spend or post revenue'],
   },
   {
@@ -20,9 +24,12 @@ export const WORKERS: Worker[] = [
     department: 'Production',
     manager_id: 'operator',
     kind: 'agent',
-    purpose: 'Prepare a scenario delivery specification, not a real asset.',
-    permissions: ['Prepare delivery specification'],
-    restrictions: ['No generated files or external models', 'Cannot certify its own quality'],
+    purpose: 'Create text deliverables for real team tasks and virtual-sale specifications.',
+    permissions: [
+      'Generate text through subscription-authenticated Codex',
+      'Prepare delivery specification',
+    ],
+    restrictions: ['No external publication or payments', 'Cannot certify its own quality'],
   },
   {
     id: 'reviewer',
@@ -32,8 +39,12 @@ export const WORKERS: Worker[] = [
     department: 'Production',
     manager_id: 'operator',
     kind: 'agent',
-    purpose: 'Validate scenario prices, costs, and delivery metadata.',
-    permissions: ['Validate delivery specification', 'Block invalid specifications'],
+    purpose: 'Independently review generated team work and validate virtual-sale metadata.',
+    permissions: [
+      'Review generated text',
+      'Validate delivery specification',
+      'Block invalid specifications',
+    ],
     restrictions: ['Cannot alter spending policy', 'Cannot certify real products'],
   },
   {
@@ -44,8 +55,12 @@ export const WORKERS: Worker[] = [
     department: 'Operations',
     manager_id: 'owner',
     kind: 'agent',
-    purpose: 'Coordinate simulated orders, delivery, and settlement.',
-    permissions: ['Run permitted scenario workflows', 'Request ledger posting through Treasury'],
+    purpose: 'Delegate owner goals, deliver reviewed team work, and coordinate virtual sales.',
+    permissions: [
+      'Delegate and synthesize generated text',
+      'Run permitted scenario workflows',
+      'Request ledger posting through Treasury',
+    ],
     restrictions: ['No live accounts or payments', 'Cannot bypass treasury checks'],
   },
   {

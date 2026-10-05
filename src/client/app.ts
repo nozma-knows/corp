@@ -1,7 +1,8 @@
 import type { DashboardState, CommandResult } from '../shared/contracts.js';
 import { element, message } from './dom.js';
 import { command, getState, getInspector, minor, date } from './api.js';
-import { pages, icon, render, dialog } from './views.js';
+import { pages, channels, icon, render, dialog, type WorkspaceUI } from './workspace.js';
+import type { MessageChannel } from '../shared/contracts.js';
 
 let state: DashboardState | undefined,
   busy = false,
@@ -9,15 +10,23 @@ let state: DashboardState | undefined,
   toastTimer: ReturnType<typeof setTimeout> | undefined;
 const main = element('#main');
 const modal = element<HTMLDialogElement>('#modal');
-const currentPage = () =>
-  pages.some(([id]) => id === location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+const ui: WorkspaceUI = { channel: 'product', draft: '', step: 0, replaying: false };
+const drafts = new Map<MessageChannel, string>();
+let replayTimer: ReturnType<typeof setInterval> | undefined;
+const currentPage = () => {
+  const page = location.hash.slice(1);
+  if (pages.some(([id]) => id === page)) return page;
+  if (page === 'team') return 'company';
+  if (page === 'activity') return 'messages';
+  return 'balance';
+};
 
 function navigation() {
   const page = currentPage();
   element('#navigation').innerHTML = pages
     .map(
       ([id, label, symbol]) =>
-        `<a href="#${id}" class="nav-item ${id === page ? 'selected' : ''}" ${id === page ? 'aria-current="page"' : ''}>${icon(symbol)}<span>${label}</span>${id === 'team' ? '<small aria-hidden="true">4</small>' : ''}</a>`,
+        `<a href="#${id}" class="nav-item ${id === page ? 'selected' : ''}" ${id === page ? 'aria-current="page"' : ''}>${icon(symbol)}<span>${label}</span>${id === 'decisions' && state?.actions.some((a) => a.status === 'reserved') ? `<small>${state.actions.filter((a) => a.status === 'reserved').length}</small>` : ''}</a>`,
     )
     .join('');
   element('#view-label').textContent = pages.find(([id]) => id === page)![1];
@@ -25,8 +34,34 @@ function navigation() {
 
 function paint() {
   if (!state) return;
-  main.innerHTML = render(currentPage(), state);
+  ui.step = Math.max(
+    0,
+    Math.min(
+      ui.step,
+      (state.model_tasks?.[0]?.steps.length || state.inspector.runs[0]?.spans.length || 1) - 1,
+    ),
+  );
+  const settingsOpen = main.querySelector('.company-settings')?.hasAttribute('open');
+  const composer = main.querySelector<HTMLTextAreaElement>('#message-body');
+  const focused = document.activeElement === composer && !!composer;
+  const selection = composer ? [composer.selectionStart, composer.selectionEnd] : [0, 0];
+  const feed = main.querySelector('.message-feed');
+  const scroll = feed?.scrollTop ?? 0;
+  const atBottom = !feed || feed.scrollHeight - feed.clientHeight - scroll < 40;
+  ui.draft = drafts.get(ui.channel) ?? '';
+  main.innerHTML = render(currentPage(), state, ui);
+  if (settingsOpen) main.querySelector('.company-settings')?.setAttribute('open', '');
+  const nextFeed = main.querySelector('.message-feed');
+  if (nextFeed) nextFeed.scrollTop = atBottom ? nextFeed.scrollHeight : scroll;
+  if (focused) {
+    const next = main.querySelector<HTMLTextAreaElement>('#message-body');
+    next?.focus({ preventScroll: true });
+    next?.setSelectionRange(selection[0], selection[1]);
+  }
   navigation();
+  element('.mode-notice').textContent = state.model_connection?.connected
+    ? 'Real employee tasks use Codex with ChatGPT sign-in. Money and sales remain virtual.'
+    : 'Money and sales are virtual. Connect ChatGPT in Company map for real employee tasks.';
   element('#updated').textContent = `Updated ${date(state.server_time)}`;
 }
 
@@ -34,12 +69,19 @@ async function refresh(force = false) {
   try {
     const [next, inspector] = await Promise.all([getState(), getInspector()]);
     const nextState: DashboardState = { ...next, inspector };
+    if (state?.inspector.runs[0]?.id !== inspector.runs[0]?.id) {
+      stopReplay();
+      ui.step = 0;
+    }
     const signature = JSON.stringify([
       next.company,
       next.events[0]?.id,
       next.envelopes,
       inspector.workers,
       inspector.runs[0]?.id,
+      next.messages.at(-1)?.id,
+      next.model_tasks,
+      next.model_connection,
     ]);
     state = nextState;
     if (force || signature !== lastSignature) paint();
@@ -93,12 +135,16 @@ async function act(path: string, payload: unknown = {}, method = 'POST') {
     notify(result.message);
     return true;
   } catch (error) {
+    // Policy and worker rejections still record a blocked task. Refresh that
+    // outcome immediately so Decisions and Messages show the same result.
+    await refresh();
     const field = modal.querySelector('.form-error');
     if (modal.open && field) field.textContent = message(error);
     else notify(message(error), true);
     return false;
   } finally {
     busy = false;
+    element<HTMLButtonElement>('#sign-out').disabled = false;
     document.querySelectorAll<HTMLButtonElement>('#modal button').forEach((button) => {
       button.disabled = false;
     });
@@ -113,6 +159,28 @@ function open(kind: string, id?: string) {
   element('#modal-content').innerHTML = dialog(kind, state, id);
   modal.showModal();
 }
+function stopReplay() {
+  clearInterval(replayTimer);
+  ui.replaying = false;
+}
+function replay() {
+  stopReplay();
+  if (!state?.inspector.runs[0]) return;
+  ui.step = 0;
+  ui.replaying = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  paint();
+  if (!ui.replaying) return;
+  replayTimer = setInterval(() => {
+    if (currentPage() !== 'company') return stopReplay();
+    if (ui.step < state!.inspector.runs[0].spans.length - 1) ui.step++;
+    else stopReplay();
+    paint();
+  }, 1800);
+}
+document.addEventListener('input', (event) => {
+  if (event.target instanceof HTMLTextAreaElement && event.target.id === 'message-body')
+    drafts.set(ui.channel, event.target.value);
+});
 
 document.addEventListener('click', async (event) => {
   const button =
@@ -133,6 +201,26 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (!state || busy) return;
+  if (action === 'channel') {
+    const channel = channels.find((c) => c.id === button.dataset.id);
+    if (!channel) return;
+    ui.channel = channel.id;
+    return paint();
+  }
+  if (action === 'connect-chatgpt') return act('/api/models/connect');
+  if (action === 'team-task') {
+    ui.channel = 'product';
+    location.hash = 'messages';
+    paint();
+    main.querySelector<HTMLTextAreaElement>('#message-body')?.focus();
+    return;
+  }
+  if (action === 'replay') return replay();
+  if (action === 'handoff-step') {
+    stopReplay();
+    ui.step = Number(button.dataset.id);
+    return paint();
+  }
   if (
     [
       'experiment',
@@ -157,8 +245,13 @@ document.addEventListener('click', async (event) => {
   if (action === 'pause') return act('/api/pause', { paused: !state.company.paused });
   if (action === 'automation')
     return act('/api/automation', { enabled: !state.company.auto_enabled });
-  if (action === 'cycle' || action === 'product-cycle')
-    return act('/api/simulation/cycle', { product_id: button.dataset.id || 'cleaning-kit' });
+  if (action === 'cycle' || action === 'product-cycle') {
+    if (await act('/api/simulation/cycle', { product_id: button.dataset.id || 'cleaning-kit' })) {
+      location.hash = 'company';
+      replay();
+    }
+    return;
+  }
   if (action === 'execute' || action === 'cancel')
     return act(`/api/actions/${button.dataset.id}/${action}`);
 });
@@ -170,6 +263,24 @@ document.addEventListener('submit', async (event) => {
   event.preventDefault();
   const fields = new FormData(form);
   try {
+    if (form.dataset.form === 'message') {
+      const channel = ui.channel;
+      const team =
+        event instanceof SubmitEvent &&
+        event.submitter instanceof HTMLButtonElement &&
+        event.submitter.value === 'team';
+      if (
+        await act(
+          team ? '/api/team/tasks' : '/api/messages',
+          team ? { channel, goal: fields.get('body') } : { channel, body: fields.get('body') },
+        )
+      ) {
+        drafts.delete(channel);
+        paint();
+        main.querySelector<HTMLTextAreaElement>('#message-body')?.focus({ preventScroll: true });
+      }
+      return;
+    }
     if (form.dataset.form === 'experiment')
       return await act('/api/experiments', {
         title: fields.get('title'),
@@ -202,6 +313,7 @@ document.addEventListener('submit', async (event) => {
 });
 
 window.addEventListener('hashchange', () => {
+  if (currentPage() !== 'company') stopReplay();
   paint();
   main.focus({ preventScroll: true });
 });
