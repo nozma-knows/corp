@@ -4,7 +4,7 @@ Deploy one container and one persistent disk for this simulation. Real money, ma
 
 ## Railway
 
-Use your existing Railway account with a **dedicated new project** named `corp-company` and an environment for staging. The TypeScript definition in [`.railway/railway.ts`](../.railway/railway.ts) manages that environment: one Docker service from GitHub `main`, one 1 GiB volume in `us-west2`, readiness checks, restart limits, no sleeping, and graceful draining. Do not apply this whole-environment definition to a project containing other services.
+Use your existing Railway account with a **dedicated new project** named `corp-company` and an environment for staging. The TypeScript definition in [`.railway/railway.ts`](../.railway/railway.ts) manages that environment: one Docker service from GitHub `main` using `Dockerfile.railway`, one 1 GiB volume in `us-west2`, readiness checks, restart limits, no sleeping, and graceful draining. Do not apply this whole-environment definition to a project containing other services.
 
 Railway's current Infrastructure as Code uses TypeScript; legacy `railway.json`/`railway.toml` configuration cannot be enabled for new services. The npm `railway` SDK is a development dependency. The separate **Railway CLI must be version 5.42.1 or newer**. See the [official IaC guide](https://docs.railway.com/infrastructure-as-code) and [CLI commands](https://docs.railway.com/cli/config).
 
@@ -41,6 +41,8 @@ docker run -d --name corp-company --init \
   --mount type=volume,src=corp-company-data,dst=/data \
   -p 127.0.0.1:8000:8000 corp-staging
 ```
+
+`Dockerfile.railway` uses ordinary public CA trust because Railway’s builder rejects BuildKit secret mounts. It otherwise matches the runtime and build steps in `Dockerfile`, which retains the optional proxy CA secret for managed local builds. Select `Dockerfile.railway` in the Railway service settings.
 
 The image runs as UID 1000. Bind mounts need that user to own the data directory; named volumes inherit the image directory's ownership. Hosted mode fails to start without valid HTTPS origin, password hash, secret, and absolute database path. Local unauthenticated mode refuses non-loopback binding. Do not use local mode for a public deployment.
 
