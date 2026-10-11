@@ -25,7 +25,7 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/helmet": "^13.0.2",
     "@fastify/static": "^10.1.5",
-    "@openai/codex": "0.160.0",
+    "@openai/codex": "0.161.0",
     "@openai/codex-sdk": "0.160.0",
     "fastify": "^5.6.1",
     "phaser": "4.2.1",
